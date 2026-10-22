@@ -20,7 +20,7 @@
     "test:e2e": "playwright test",
     "format": "prettier --write .",
     "format:check": "prettier --check .",
-    "config:validate": "pnpm --filter @dzenwriter/api config:validate",
+    "config:validate": "turbo run config:validate --filter=@dzenwriter/api",
     "db:up": "docker compose up -d postgres",
     "db:generate": "pnpm --filter @dzenwriter/db generate",
     "db:migrate": "pnpm --filter @dzenwriter/db migrate",

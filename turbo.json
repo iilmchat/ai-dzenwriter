@@ -13,6 +13,10 @@
     "typecheck": {
       "dependsOn": ["^build"]
     },
+    "config:validate": {
+      "dependsOn": ["^build"],
+      "cache": false
+    },
     "test": {
       "dependsOn": ["^build"],
       "env": ["TEST_DATABASE_URL"],
