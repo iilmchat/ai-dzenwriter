@@ -1,0 +1,454 @@
+import path from 'node:path';
+import {
+  ConflictException,
+  ForbiddenException,
+  UnprocessableEntityException,
+} from '@nestjs/common';
+import type { CreateArticleInput } from '@dzenwriter/shared';
+import { describe, expect, it } from 'vitest';
+import { emptyFactTotals, OUT_OF_FOCUS_WARNING } from '../src/articles/article-rules';
+import { ArticlesService } from '../src/articles/articles.service';
+import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
+import { InMemoryArticlesRepository } from './support/in-memory-articles.repository';
+import { InMemoryCatalog } from './support/in-memory-catalog';
+
+const config = loadAppConfig(resolveConfigDir(path.resolve(process.cwd(), '../../config')));
+const NOW = new Date('2026-10-22T10:00:00Z');
+const PLAN = '2026-11-01T09:00:00.000Z';
+const DZEN_URL = 'https://dzen.ru/a/demo-article';
+const NEWS: CreateArticleInput = {
+  topic: 'Новости о регулировании ИИ',
+  keywords: ['ИИ'],
+  styleId: 'industry-news',
+  format: 'news',
+};
+
+function setup() {
+  const repo = new InMemoryArticlesRepository();
+  const catalog = new InMemoryCatalog();
+  const service = new ArticlesService(repo, catalog, config);
+  const owner = repo.addPerson('anna');
+  const reviewer = repo.addPerson('boris');
+  const stranger = repo.addPerson('vera');
+  const admin = repo.addPerson('chief');
+  const actors = {
+    owner: { id: owner.id, role: 'author' as const },
+    reviewer: { id: reviewer.id, role: 'reviewer' as const },
+    stranger: { id: stranger.id, role: 'author' as const },
+    admin: { id: admin.id, role: 'admin' as const },
+  };
+  return { repo, catalog, service, actors };
+}
+
+type Harness = ReturnType<typeof setup>;
+
+async function createArticle(
+  harness: Harness,
+  overrides: Partial<CreateArticleInput> = {},
+  actor = harness.actors.owner,
+) {
+  const response = await harness.service.create(actor, { ...NEWS, ...overrides });
+  return response.article;
+}
+
+describe('создание материала', () => {
+  it('начинается в статусе «Идея» с объёмом формата и тоном стиля', async () => {
+    const harness = setup();
+
+    const article = await createArticle(harness);
+
+    expect(article).toMatchObject({
+      status: 'idea',
+      lengthMin: 4000,
+      lengthMax: 6000,
+      tone: 'neutral',
+      owner: { login: 'anna' },
+      version: 1,
+    });
+    expect(harness.repo.audit.at(-1)).toMatchObject({ action: 'article.create' });
+  });
+
+  it('тема вне фокуса ИИ даёт предупреждение, но материал создаётся', async () => {
+    const harness = setup();
+
+    const response = await harness.service.create(harness.actors.owner, {
+      ...NEWS,
+      topic: 'Рецепт борща',
+      keywords: ['суп'],
+    });
+
+    expect(response.warnings).toContain(OUT_OF_FOCUS_WARNING);
+    expect(response.article.status).toBe('idea');
+  });
+
+  it('объём вне диапазона формата даёт предупреждение', async () => {
+    const harness = setup();
+
+    const response = await harness.service.create(harness.actors.owner, {
+      ...NEWS,
+      lengthMin: 1000,
+    });
+
+    expect(response.warnings.some((line) => line.includes('вне диапазона формата'))).toBe(true);
+  });
+
+  it('формат, который стиль не допускает, отклоняется', async () => {
+    const harness = setup();
+
+    await expect(
+      harness.service.create(harness.actors.owner, { ...NEWS, format: 'roundup' }),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+
+  it('описание продукта без продукта отклоняется, с архивным продуктом тоже', async () => {
+    const harness = setup();
+    const product = {
+      id: '00000000-0000-4000-8000-0000000000aa',
+      slug: 'p',
+      name: 'Продукт',
+      oneLiner: '—',
+      archived: true,
+    };
+    harness.catalog.products.push(product);
+    const productInput = { styleId: 'product-description', format: 'article' as const };
+
+    await expect(
+      harness.service.create(harness.actors.owner, { ...NEWS, ...productInput }),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    await expect(
+      harness.service.create(harness.actors.owner, {
+        ...NEWS,
+        ...productInput,
+        productId: product.id,
+      }),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  });
+});
+
+describe('список', () => {
+  it('фильтр «мои» показывает только материалы владельца', async () => {
+    const harness = setup();
+    await createArticle(harness);
+    await createArticle(harness, {}, harness.actors.stranger);
+
+    const { items } = await harness.service.list(
+      { mine: true, includeArchived: false },
+      harness.actors.owner.id,
+    );
+
+    expect(items).toHaveLength(1);
+    expect(items[0]?.owner.login).toBe('anna');
+  });
+
+  it('архив скрыт по умолчанию и виден по флагу', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'archived');
+
+    const hidden = await harness.service.list(
+      { mine: false, includeArchived: false },
+      harness.actors.owner.id,
+    );
+    const shown = await harness.service.list(
+      { mine: false, includeArchived: true },
+      harness.actors.owner.id,
+    );
+
+    expect(hidden.items).toHaveLength(0);
+    expect(shown.items).toHaveLength(1);
+  });
+});
+
+describe('переходы статусов', () => {
+  it('автор переводит идею в «Факты», чужой автор получает запрет', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    await expect(
+      harness.service.transition(
+        harness.actors.stranger,
+        article.id,
+        {
+          to: 'researching',
+          expectedVersion: 1,
+        },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    const updated = await harness.service.transition(
+      harness.actors.owner,
+      article.id,
+      {
+        to: 'researching',
+        expectedVersion: 1,
+      },
+      NOW,
+    );
+    expect(updated.status).toBe('researching');
+    expect(updated.version).toBe(2);
+  });
+
+  it('устаревшая версия материала отклоняется с конфликтом', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    await expect(
+      harness.service.transition(
+        harness.actors.owner,
+        article.id,
+        { to: 'researching', expectedVersion: 7 },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('переход к черновику требует одобренных фактов стиля', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'researching');
+    const input = { to: 'drafting' as const, expectedVersion: 1 };
+
+    await expect(
+      harness.service.transition(harness.actors.owner, article.id, input, NOW),
+    ).rejects.toThrow(/Не хватает/);
+
+    harness.repo.setTotals(article.id, {
+      ...emptyFactTotals(),
+      news_source: { count: 1, chars: 40 },
+    });
+    const updated = await harness.service.transition(harness.actors.owner, article.id, input, NOW);
+    expect(updated.status).toBe('drafting');
+  });
+
+  it('на ревью уходит только версия без блокирующих проверок', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'drafting');
+    const input = { to: 'in_review' as const, expectedVersion: 1 };
+
+    await expect(
+      harness.service.transition(harness.actors.owner, article.id, input, NOW),
+    ).rejects.toThrow(/Нет версии текста/);
+
+    harness.repo.addVersion(article.id, {
+      checks: [{ id: 'numbers_must_map_to_facts', severity: 'block' }],
+    });
+    await expect(
+      harness.service.transition(harness.actors.owner, article.id, input, NOW),
+    ).rejects.toThrow(/блокирующих проверок/);
+
+    harness.repo.addVersion(article.id, { number: 2 });
+    const updated = await harness.service.transition(harness.actors.owner, article.id, input, NOW);
+    expect(updated.status).toBe('in_review');
+  });
+
+  it('ревьюер утверждает чужой материал: фиксируются решение и ревьюер', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'in_review', { currentVersionNumber: 1 });
+    harness.repo.addVersion(article.id);
+
+    const approved = await harness.service.transition(
+      harness.actors.reviewer,
+      article.id,
+      { to: 'approved', expectedVersion: 1 },
+      NOW,
+    );
+
+    expect(approved).toMatchObject({ status: 'approved', reviewer: { login: 'boris' } });
+    expect(harness.repo.reviews).toEqual([
+      expect.objectContaining({ decision: 'approved', versionNumber: 1 }),
+    ]);
+  });
+
+  it('автор не утверждает собственный материал', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'in_review');
+    harness.repo.addVersion(article.id);
+
+    await expect(
+      harness.service.transition(
+        harness.actors.owner,
+        article.id,
+        { to: 'approved', expectedVersion: 1 },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('возврат на доработку требует комментарий', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'in_review');
+    harness.repo.addVersion(article.id);
+    const back = { to: 'drafting' as const, expectedVersion: 1 };
+
+    await expect(
+      harness.service.transition(harness.actors.reviewer, article.id, back, NOW),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+    const updated = await harness.service.transition(
+      harness.actors.reviewer,
+      article.id,
+      { ...back, comment: 'Уточните источник цифр' },
+      NOW,
+    );
+    expect(updated.status).toBe('drafting');
+    expect(harness.repo.reviews.at(-1)).toMatchObject({ decision: 'changes_requested' });
+  });
+
+  it('в график ставится только с плановой датой', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'approved');
+
+    await expect(
+      harness.service.transition(
+        harness.actors.owner,
+        article.id,
+        { to: 'scheduled', expectedVersion: 1 },
+        NOW,
+      ),
+    ).rejects.toThrow(/плановую дату/);
+
+    const planned = await harness.service.update(
+      harness.actors.owner,
+      article.id,
+      { expectedVersion: 1, plannedAt: PLAN },
+      NOW,
+    );
+    const scheduled = await harness.service.transition(
+      harness.actors.owner,
+      article.id,
+      { to: 'scheduled', expectedVersion: planned.version },
+      NOW,
+    );
+    expect(scheduled.status).toBe('scheduled');
+    expect(harness.repo.publications).toEqual([expect.objectContaining({ status: 'scheduled' })]);
+  });
+
+  it('публикация требует ссылку и сохраняет её в публикациях', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'approved');
+    const publish = { to: 'published' as const, expectedVersion: 1 };
+
+    await expect(
+      harness.service.transition(harness.actors.owner, article.id, publish, NOW),
+    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+
+    const published = await harness.service.transition(
+      harness.actors.reviewer,
+      article.id,
+      { ...publish, externalUrl: DZEN_URL },
+      NOW,
+    );
+    expect(published.status).toBe('published');
+    expect(harness.repo.publications.at(-1)).toMatchObject({
+      status: 'published',
+      externalUrl: DZEN_URL,
+    });
+  });
+
+  it('администратор архивирует идею, архив получает дату', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    const archived = await harness.service.transition(
+      harness.actors.admin,
+      article.id,
+      { to: 'archived', expectedVersion: 1 },
+      NOW,
+    );
+
+    expect(archived.status).toBe('archived');
+    expect(harness.repo.articles.get(article.id)?.archivedAt).toEqual(NOW);
+  });
+
+  it('переход, которого нет в правилах, отклоняется', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    await expect(
+      harness.service.transition(
+        harness.actors.owner,
+        article.id,
+        { to: 'published', expectedVersion: 1 },
+        NOW,
+      ),
+    ).rejects.toThrow(/не предусмотрен правилами/);
+  });
+});
+
+describe('изменение материала', () => {
+  it('владелец меняет тему и получает новую версию записи', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    const updated = await harness.service.update(
+      harness.actors.owner,
+      article.id,
+      { expectedVersion: 1, topic: 'Новости о регулировании ИИ в ЕС' },
+      NOW,
+    );
+
+    expect(updated).toMatchObject({ topic: 'Новости о регулировании ИИ в ЕС', version: 2 });
+  });
+
+  it('чужой автор не меняет материал, после утверждения текст зафиксирован', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    await expect(
+      harness.service.update(
+        harness.actors.stranger,
+        article.id,
+        { expectedVersion: 1, topic: 'Чужая тема' },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    harness.repo.setStatus(article.id, 'approved');
+    await expect(
+      harness.service.update(
+        harness.actors.owner,
+        article.id,
+        { expectedVersion: 1, topic: 'Новая тема' },
+        NOW,
+      ),
+    ).rejects.toThrow(/до утверждения/);
+  });
+
+  it('правка со старой версией отклоняется', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    await expect(
+      harness.service.update(
+        harness.actors.owner,
+        article.id,
+        { expectedVersion: 3, topic: 'Тема' },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('карточка материала', () => {
+  it('для чужого автора переходы видны, но объясняют запрет', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    const detail = await harness.service.get(harness.actors.stranger, article.id);
+
+    expect(detail.transitions).toEqual([
+      expect.objectContaining({
+        to: 'researching',
+        allowed: false,
+        reason: expect.stringContaining('автор'),
+      }),
+      expect.objectContaining({ to: 'archived', allowed: false }),
+    ]);
+  });
+});

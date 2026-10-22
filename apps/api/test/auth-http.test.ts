@@ -103,7 +103,7 @@ describe('вход, сессии и роли по HTTP', () => {
     );
 
     expect(response.status).toBe(302);
-    expect(response.headers.get('location')).toBe(`${WEB_ORIGIN}/?error=state`);
+    expect(response.headers.get('location')).toBe(`${WEB_ORIGIN}/login?error=state`);
   });
 
   it('участник организации входит, первый администратор получает роль admin', async () => {
@@ -131,7 +131,7 @@ describe('вход, сессии и роли по HTTP', () => {
     try {
       const result = await signIn();
 
-      expect(result.location).toBe(`${WEB_ORIGIN}/?error=not_member`);
+      expect(result.location).toBe(`${WEB_ORIGIN}/login?error=not_member`);
       expect(result.sessionCookie).toBe('');
     } finally {
       github.membership = 'active';

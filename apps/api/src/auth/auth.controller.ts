@@ -104,8 +104,9 @@ export class AuthController {
     return { id: user.id, login: user.login, name: user.name, role: user.role };
   }
 
+  // Успешный вход ведёт на доску, ошибка — на экран входа с причиной.
   private redirectToWeb(res: Response, error?: string): void {
-    const url = new URL('/', this.config.webOrigin);
+    const url = new URL(error ? '/login' : '/', this.config.webOrigin);
     if (error) {
       url.searchParams.set('error', error);
     }

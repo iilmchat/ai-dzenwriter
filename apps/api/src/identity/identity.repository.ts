@@ -1,4 +1,5 @@
 import type { UserRole } from '@dzenwriter/shared';
+import type { AuditRecord } from '../audit/audit.record';
 
 export const IDENTITY_REPOSITORY = Symbol('IDENTITY_REPOSITORY');
 
@@ -17,13 +18,7 @@ export interface ActiveSessionRow {
   readonly user: UserRow;
 }
 
-export interface AuditRecord {
-  readonly actorId: string | null;
-  readonly action: string;
-  readonly entityType: string;
-  readonly entityId: string;
-  readonly payload: Record<string, unknown>;
-}
+export type { AuditRecord } from '../audit/audit.record';
 
 export interface UserUpsert {
   readonly githubId: number;
