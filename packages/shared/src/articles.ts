@@ -2,6 +2,7 @@ import { z } from 'zod';
 import {
   ARTICLE_FORMATS,
   ARTICLE_STATUSES,
+  type ArticleStatus,
   DISCLAIMER_TOPICS,
   FACT_POLICIES,
   FACT_STATUSES,
@@ -12,6 +13,13 @@ import {
   TONES,
   VERSION_ORIGINS,
 } from './enums';
+
+// Текст, параметры и факты меняются только до утверждения. Дальше материал возвращают в черновик.
+export const CONTENT_EDITABLE_STATUSES: readonly ArticleStatus[] = [
+  'idea',
+  'researching',
+  'drafting',
+];
 
 export const TOPIC_MIN_LENGTH = 3;
 export const TOPIC_MAX_LENGTH = 300;
@@ -186,11 +194,21 @@ export const publicationSummarySchema = z.object({
 });
 
 export const factLinkSchema = z.object({
+  factId: z.uuid(),
   label: z.string(),
   type: z.enum(FACT_TYPES),
   status: z.enum(FACT_STATUSES),
+  text: z.string(),
   sourceName: z.string().nullable(),
+  sourceUrl: z.string().nullable(),
+  sourcePublishedAt: z.string().nullable(),
 });
+
+// Тело POST /api/v1/articles/{id}/facts: метка F<n> назначается сервером.
+export const attachFactInputSchema = z.object({
+  factId: z.uuid({ error: 'Выберите факт из библиотеки' }),
+});
+export type AttachFactInput = z.infer<typeof attachFactInputSchema>;
 
 export const articleDetailSchema = articleItemSchema.extend({
   requirements: z.array(requirementSchema),
@@ -214,7 +232,7 @@ export const createArticleResponseSchema = z.object({
 });
 export type CreateArticleResponse = z.infer<typeof createArticleResponseSchema>;
 
-// Каталог: стили, форматы и продукты только для чтения (E5 и часть E4).
+// Каталог стилей и форматов только для чтения: они лежат в config/ и меняются через PR.
 export const styleCardSchema = z.object({
   id: z.string(),
   name: z.string(),
@@ -257,15 +275,5 @@ export const formatCardSchema = z.object({
 });
 export type FormatCard = z.infer<typeof formatCardSchema>;
 
-export const productSchema = z.object({
-  id: z.uuid(),
-  slug: z.string(),
-  name: z.string(),
-  oneLiner: z.string(),
-  archived: z.boolean(),
-});
-export type Product = z.infer<typeof productSchema>;
-
 export const styleListResponseSchema = z.object({ items: z.array(styleCardSchema) });
 export const formatListResponseSchema = z.object({ items: z.array(formatCardSchema) });
-export const productListResponseSchema = z.object({ items: z.array(productSchema) });

@@ -16,7 +16,65 @@ const AUTHOR = {
   name: 'Борис',
   role: 'author',
 };
+const REVIEWER = {
+  ...ADMIN,
+  id: '00000000-0000-4000-8000-000000000003',
+  login: 'vera',
+  name: 'Вера',
+  role: 'reviewer',
+};
 const ARTICLE_ID = '00000000-0000-4000-8000-0000000000a1';
+const FACT_ID = '00000000-0000-4000-8000-0000000000f1';
+const PRODUCT = {
+  id: '00000000-0000-4000-8000-0000000000e1',
+  slug: 'demo-product',
+  name: 'Демо-продукт',
+  oneLiner: 'Пример продукта',
+  archived: false,
+};
+
+const ALLOWED = { allowed: true, reason: null };
+const DENIED = (reason: string) => ({ allowed: false, reason });
+const FACT_ACTIONS = {
+  edit: ALLOWED,
+  approve: ALLOWED,
+  reject: ALLOWED,
+  confirmConsent: DENIED('Согласие подтверждают у заметок опыта'),
+  withdrawConsent: DENIED('Отзыв согласия относится только к заметкам опыта'),
+  correct: DENIED('Исправить можно только одобренный факт'),
+};
+
+// Факт в формате API: поля совпадают с factItemSchema из shared.
+function factItem(overrides: Record<string, unknown> = {}) {
+  return {
+    id: FACT_ID,
+    type: 'company_fact',
+    status: 'draft',
+    text: 'Команда измеряет точность ответов на эталонном наборе',
+    sourceName: null,
+    sourceUrl: null,
+    sourcePublishedAt: null,
+    productId: null,
+    productName: null,
+    mentionsClient: false,
+    clientPermission: false,
+    consentConfirmed: false,
+    consentConfirmedBy: null,
+    consentConfirmedAt: null,
+    anonymized: false,
+    createdBy: { id: ADMIN.id, login: 'anna', name: 'Анна Иванова' },
+    approvedBy: null,
+    approvedAt: null,
+    supersedesId: null,
+    supersededById: null,
+    hasPendingCorrection: false,
+    version: 1,
+    createdAt: '2026-10-20T10:00:00.000Z',
+    updatedAt: '2026-10-21T10:00:00.000Z',
+    actions: FACT_ACTIONS,
+    ...overrides,
+  };
+}
 
 const STYLE = {
   id: 'industry-news',
@@ -103,6 +161,7 @@ function stubApi(overrides: Record<string, Handler> = {}, me: unknown = ADMIN) {
     'GET /api/v1/styles': () => json({ items: [STYLE] }),
     'GET /api/v1/formats': () => json({ items: [FORMAT] }),
     'GET /api/v1/products': () => json({ items: [] }),
+    'GET /api/v1/facts': () => json({ items: [], truncated: false }),
     'GET /api/v1/articles': () => json({ items: [ITEM], truncated: false }),
     [`GET /api/v1/articles/${ARTICLE_ID}`]: () => json(DETAIL),
     ...overrides,
@@ -209,5 +268,87 @@ describe('приложение', () => {
     renderAt('/admin/users');
 
     expect(await screen.findByText('Этот раздел недоступен для вашей роли.')).toBeTruthy();
+  });
+
+  it('факт-база: ревьюер одобряет чужой черновик', async () => {
+    stubApi(
+      { 'GET /api/v1/facts': () => json({ items: [factItem()], truncated: false }) },
+      REVIEWER,
+    );
+
+    renderAt('/facts');
+
+    expect(await screen.findByRole('button', { name: 'Одобрить' })).toBeTruthy();
+    expect(screen.getByText('Команда измеряет точность ответов на эталонном наборе')).toBeTruthy();
+  });
+
+  it('факт-база: автор не видит кнопку одобрения и читает причину', async () => {
+    const reason = 'Решение по факту принимает ревьюер или администратор';
+    stubApi(
+      {
+        'GET /api/v1/facts': () =>
+          json({
+            items: [factItem({ actions: { ...FACT_ACTIONS, approve: DENIED(reason) } })],
+            truncated: false,
+          }),
+      },
+      AUTHOR,
+    );
+
+    renderAt('/facts');
+
+    expect(await screen.findByText(reason)).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Одобрить' })).toBeNull();
+  });
+
+  it('продукты: автор видит справочник, но не меняет его', async () => {
+    stubApi({ 'GET /api/v1/products': () => json({ items: [PRODUCT] }) }, AUTHOR);
+
+    renderAt('/products');
+
+    expect(await screen.findByText('Демо-продукт')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Новый продукт' })).toBeNull();
+    expect(screen.getByText(/Справочник ведёт администратор/)).toBeTruthy();
+  });
+
+  it('карточка материала: владелец привязывает факт из библиотеки', async () => {
+    const posted: unknown[] = [];
+    const attached = {
+      factId: FACT_ID,
+      label: 'F1',
+      type: 'news_source',
+      status: 'approved',
+      text: 'Цитата из источника',
+      sourceName: 'Демо-источник',
+      sourceUrl: 'https://example.com/news/1',
+      sourcePublishedAt: '2026-10-20',
+    };
+    stubApi({
+      'GET /api/v1/facts': () =>
+        json({
+          items: [
+            factItem({
+              type: 'news_source',
+              status: 'approved',
+              text: 'Цитата из источника',
+              sourceUrl: 'https://example.com/news/1',
+              sourcePublishedAt: '2026-10-20',
+            }),
+          ],
+          truncated: false,
+        }),
+      [`POST /api/v1/articles/${ARTICLE_ID}/facts`]: (init) => {
+        posted.push(JSON.parse(String(init?.body)));
+        return json({ ...DETAIL, facts: [attached] });
+      },
+    });
+
+    renderAt(`/articles/${ARTICLE_ID}`);
+
+    fireEvent.change(await screen.findByLabelText('Факт'), { target: { value: FACT_ID } });
+    fireEvent.click(screen.getByRole('button', { name: 'Привязать' }));
+
+    expect(await screen.findByText('F1 · Источник новости · Одобрен')).toBeTruthy();
+    expect(posted).toEqual([{ factId: FACT_ID }]);
   });
 });

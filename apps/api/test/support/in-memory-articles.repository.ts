@@ -17,18 +17,28 @@ import type {
   ReviewRecord,
   VersionRecord,
 } from '../../src/articles/articles.repository';
+import type { InMemoryFactsRepository } from './in-memory-facts.repository';
+
+interface FactLink {
+  readonly factId: string;
+  readonly label: string;
+}
 
 // Репозиторий статей в памяти: та же семантика версий и фильтров, что в DrizzleArticlesRepository.
+// Факты читаются из общего хранилища фактов, как JOIN в БД.
 export class InMemoryArticlesRepository implements ArticlesRepository {
   readonly articles = new Map<string, ArticleRecord>();
   readonly people = new Map<string, PersonRef>();
   readonly versions = new Map<string, VersionRecord[]>();
   readonly reviews: (NewReview & { readonly createdAt: Date })[] = [];
   readonly publications: NewPublication[] = [];
-  readonly linkedFacts = new Map<string, LinkedFactRecord[]>();
+  readonly links = new Map<string, FactLink[]>();
+  readonly labelHistory = new Map<string, number>();
   readonly totals = new Map<string, FactTotals>();
   readonly audit: AuditRecord[] = [];
   readonly clock = new Date('2026-10-22T10:00:00Z');
+
+  constructor(private readonly factStore?: InMemoryFactsRepository) {}
 
   addPerson(login: string): PersonRef {
     const person = { id: randomUUID(), login, name: null };
@@ -180,7 +190,44 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
   }
 
   async listLinkedFacts(articleId: string): Promise<LinkedFactRecord[]> {
-    return this.linkedFacts.get(articleId) ?? [];
+    return (this.links.get(articleId) ?? []).map((link) => {
+      const fact = this.requireFact(link.factId);
+      return {
+        factId: fact.id,
+        label: link.label,
+        type: fact.type,
+        status: fact.status,
+        text: fact.text,
+        sourceName: fact.sourceName,
+        sourceUrl: fact.sourceUrl,
+        sourcePublishedAt: fact.sourcePublishedAt,
+      };
+    });
+  }
+
+  async attachFact(articleId: string, factId: string): Promise<string | undefined> {
+    const list = this.links.get(articleId) ?? [];
+    if (list.some((link) => link.factId === factId)) {
+      return undefined;
+    }
+    const highest = Math.max(
+      this.labelHistory.get(articleId) ?? 0,
+      ...list.map((link) => Number(link.label.slice(1))),
+    );
+    this.labelHistory.set(articleId, highest + 1);
+    const label = `F${highest + 1}`;
+    this.links.set(articleId, [...list, { factId, label }]);
+    return label;
+  }
+
+  async detachFact(articleId: string, factId: string): Promise<boolean> {
+    const list = this.links.get(articleId) ?? [];
+    const remaining = list.filter((link) => link.factId !== factId);
+    if (remaining.length === list.length) {
+      return false;
+    }
+    this.links.set(articleId, remaining);
+    return true;
   }
 
   async approvedFactTotals(articleId: string): Promise<FactTotals> {
@@ -213,6 +260,14 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
       throw new Error(`Нет пользователя ${id}`);
     }
     return person;
+  }
+
+  private requireFact(id: string) {
+    const fact = this.factStore?.facts.get(id);
+    if (!fact) {
+      throw new Error(`Нет факта ${id}`);
+    }
+    return fact;
   }
 
   private view(article: ArticleRecord): ArticleView {

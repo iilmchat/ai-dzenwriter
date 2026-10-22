@@ -2,6 +2,7 @@ import path from 'node:path';
 import {
   ConflictException,
   ForbiddenException,
+  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import type { CreateArticleInput } from '@dzenwriter/shared';
@@ -11,6 +12,7 @@ import { ArticlesService } from '../src/articles/articles.service';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
 import { InMemoryArticlesRepository } from './support/in-memory-articles.repository';
 import { InMemoryCatalog } from './support/in-memory-catalog';
+import { type StoredFact, InMemoryFactsRepository } from './support/in-memory-facts.repository';
 
 const config = loadAppConfig(resolveConfigDir(path.resolve(process.cwd(), '../../config')));
 const NOW = new Date('2026-10-22T10:00:00Z');
@@ -24,20 +26,26 @@ const NEWS: CreateArticleInput = {
 };
 
 function setup() {
-  const repo = new InMemoryArticlesRepository();
+  const facts = new InMemoryFactsRepository();
+  const repo = new InMemoryArticlesRepository(facts);
   const catalog = new InMemoryCatalog();
-  const service = new ArticlesService(repo, catalog, config);
-  const owner = repo.addPerson('anna');
-  const reviewer = repo.addPerson('boris');
-  const stranger = repo.addPerson('vera');
-  const admin = repo.addPerson('chief');
+  const service = new ArticlesService(repo, catalog, facts, config);
+  const addPerson = (login: string) => {
+    const person = repo.addPerson(login);
+    facts.people.set(person.id, person);
+    return person;
+  };
+  const owner = addPerson('anna');
+  const reviewer = addPerson('boris');
+  const stranger = addPerson('vera');
+  const admin = addPerson('chief');
   const actors = {
     owner: { id: owner.id, role: 'author' as const },
     reviewer: { id: reviewer.id, role: 'reviewer' as const },
     stranger: { id: stranger.id, role: 'author' as const },
     admin: { id: admin.id, role: 'admin' as const },
   };
-  return { repo, catalog, service, actors };
+  return { repo, facts, catalog, service, actors };
 }
 
 type Harness = ReturnType<typeof setup>;
@@ -450,5 +458,185 @@ describe('карточка материала', () => {
       }),
       expect.objectContaining({ to: 'archived', allowed: false }),
     ]);
+  });
+});
+
+function addNewsFact(harness: Harness, fields: Partial<StoredFact> = {}): StoredFact {
+  return harness.facts.addFact({
+    type: 'news_source',
+    status: 'approved',
+    text: 'Цитата из источника',
+    sourceUrl: 'https://example.com/news/1',
+    sourcePublishedAt: '2026-10-20',
+    createdById: harness.actors.reviewer.id,
+    ...fields,
+  });
+}
+
+describe('факты материала', () => {
+  it('владелец привязывает факты: метки F1, F2 по порядку, повтор отклоняется', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    const first = addNewsFact(harness, { text: 'Первая цитата' });
+    const second = addNewsFact(harness, { text: 'Вторая цитата' });
+
+    const once = await harness.service.attachFact(harness.actors.owner, article.id, first.id);
+    expect(once.facts).toEqual([
+      expect.objectContaining({
+        factId: first.id,
+        label: 'F1',
+        status: 'approved',
+        text: 'Первая цитата',
+        sourceUrl: 'https://example.com/news/1',
+        sourcePublishedAt: '2026-10-20',
+      }),
+    ]);
+
+    const twice = await harness.service.attachFact(harness.actors.owner, article.id, second.id);
+    expect(twice.facts.map((fact) => fact.label)).toEqual(['F1', 'F2']);
+    await expect(
+      harness.service.attachFact(harness.actors.owner, article.id, first.id),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(harness.repo.audit.at(-1)).toMatchObject({
+      action: 'article.fact_attach',
+      payload: { factId: second.id, label: 'F2' },
+    });
+  });
+
+  it('отклонённый и заменённый факт не привязываются', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    const rejected = addNewsFact(harness, { status: 'rejected' });
+    const superseded = addNewsFact(harness, { status: 'superseded' });
+
+    for (const fact of [rejected, superseded]) {
+      await expect(
+        harness.service.attachFact(harness.actors.owner, article.id, fact.id),
+      ).rejects.toBeInstanceOf(UnprocessableEntityException);
+    }
+  });
+
+  it('факт типа, который политика стиля не допускает, отклоняется', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    const companyFact = harness.facts.addFact({
+      type: 'company_fact',
+      status: 'approved',
+      createdById: harness.actors.reviewer.id,
+    });
+
+    await expect(
+      harness.service.attachFact(harness.actors.owner, article.id, companyFact.id),
+    ).rejects.toThrow(/не подходит стилю/);
+  });
+
+  it('факт о другом продукте не привязывается к материалу о продукте', async () => {
+    const harness = setup();
+    const productA = '00000000-0000-4000-8000-0000000000aa';
+    const productB = '00000000-0000-4000-8000-0000000000bb';
+    harness.catalog.products.push(
+      { id: productA, slug: 'a', name: 'А', oneLiner: '—', archived: false },
+      { id: productB, slug: 'b', name: 'Б', oneLiner: '—', archived: false },
+    );
+    const article = await createArticle(harness, {
+      styleId: 'product-description',
+      format: 'article',
+      productId: productA,
+    });
+    const otherProduct = harness.facts.addFact({
+      type: 'product_fact',
+      status: 'approved',
+      productId: productB,
+      createdById: harness.actors.reviewer.id,
+    });
+
+    await expect(
+      harness.service.attachFact(harness.actors.owner, article.id, otherProduct.id),
+    ).rejects.toThrow(/другому продукту/);
+  });
+
+  it('чужой автор не привязывает факты, после утверждения факты не меняются', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    const fact = addNewsFact(harness);
+
+    await expect(
+      harness.service.attachFact(harness.actors.stranger, article.id, fact.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    harness.repo.setStatus(article.id, 'approved');
+    await expect(
+      harness.service.attachFact(harness.actors.owner, article.id, fact.id),
+    ).rejects.toThrow(/до утверждения/);
+  });
+
+  it('отвязка убирает факт, повторная отвязка — 404', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    const fact = addNewsFact(harness);
+    await harness.service.attachFact(harness.actors.owner, article.id, fact.id);
+
+    const detached = await harness.service.detachFact(harness.actors.owner, article.id, fact.id);
+    expect(detached.facts).toEqual([]);
+    await expect(
+      harness.service.detachFact(harness.actors.owner, article.id, fact.id),
+    ).rejects.toBeInstanceOf(NotFoundException);
+  });
+
+  it('после отвязки метка не возвращается: новый факт получает следующий номер', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    const first = addNewsFact(harness);
+    const second = addNewsFact(harness);
+    const third = addNewsFact(harness);
+    await harness.service.attachFact(harness.actors.owner, article.id, first.id);
+    await harness.service.attachFact(harness.actors.owner, article.id, second.id);
+    await harness.service.detachFact(harness.actors.owner, article.id, second.id);
+
+    const after = await harness.service.attachFact(harness.actors.owner, article.id, third.id);
+
+    expect(after.facts.map((fact) => fact.label)).toEqual(['F1', 'F3']);
+  });
+
+  it('привязанный черновик не пускает на ревью, одобрение снимает запрет', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'drafting');
+    harness.repo.addVersion(article.id);
+    const draft = addNewsFact(harness, { status: 'draft' });
+    await harness.service.attachFact(harness.actors.owner, article.id, draft.id);
+    const toReview = { to: 'in_review' as const, expectedVersion: 1 };
+
+    await expect(
+      harness.service.transition(harness.actors.owner, article.id, toReview, NOW),
+    ).rejects.toThrow('Привязанные факты не одобрены: F1 (черновик)');
+
+    harness.facts.facts.set(draft.id, { ...draft, status: 'approved' });
+    const inReview = await harness.service.transition(
+      harness.actors.owner,
+      article.id,
+      toReview,
+      NOW,
+    );
+    expect(inReview.status).toBe('in_review');
+  });
+
+  it('заменённый факт тоже не пускает на ревью', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'drafting');
+    harness.repo.addVersion(article.id);
+    const fact = addNewsFact(harness);
+    await harness.service.attachFact(harness.actors.owner, article.id, fact.id);
+    harness.facts.facts.set(fact.id, { ...fact, status: 'superseded' });
+
+    await expect(
+      harness.service.transition(
+        harness.actors.owner,
+        article.id,
+        { to: 'in_review', expectedVersion: 1 },
+        NOW,
+      ),
+    ).rejects.toThrow(/F1 \(заменён\)/);
   });
 });

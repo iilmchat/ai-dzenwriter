@@ -1,5 +1,6 @@
 import {
   ARTICLE_STATUS_LABELS,
+  CONTENT_EDITABLE_STATUSES,
   TONE_LABELS,
   updateArticleInputSchema,
   type ArticleDetail,
@@ -12,8 +13,6 @@ import { dateToPlannedAt, parseKeywords, plannedAtToDate } from '../../lib/forma
 import { BUTTON_PRIMARY, INPUT_CLASS, LABEL_CLASS, PANEL_CLASS } from '../../shared/ui/classes';
 import { Notice } from '../../shared/ui/Notice';
 
-const CONTENT_EDITABLE = new Set(['idea', 'researching', 'drafting']);
-
 interface ArticleEditFormProps {
   readonly article: ArticleDetail;
   readonly onSaved: (article: ArticleDetail) => void;
@@ -22,7 +21,7 @@ interface ArticleEditFormProps {
 // Текст и параметры меняются до утверждения, дата публикации — до публикации.
 // В запрос уходят только изменённые поля, поэтому версия растёт только при реальной правке.
 export function ArticleEditForm({ article, onSaved }: ArticleEditFormProps) {
-  const contentEditable = CONTENT_EDITABLE.has(article.status);
+  const contentEditable = CONTENT_EDITABLE_STATUSES.includes(article.status);
   const [topic, setTopic] = useState(article.topic);
   const [keywords, setKeywords] = useState(article.keywords.join(', '));
   const [tone, setTone] = useState<Tone>(article.tone);

@@ -1,8 +1,11 @@
 import {
+  CONTENT_EDITABLE_STATUSES,
   type ArticleStatus,
   type CheckSeverity,
+  type FactStatus,
   type FactType,
   ARTICLE_STATUS_LABELS,
+  FACT_STATUS_LABELS,
   FACT_TYPE_LABELS,
   FACT_TYPES,
   type FormatConfig,
@@ -17,11 +20,9 @@ export const OUT_OF_FOCUS_WARNING =
   'Тема вне фокуса ИИ. Запуск генерации потребует подтверждения ревьюера.';
 
 // Текст и параметры меняются только до утверждения. Дальше материал возвращается в черновик.
-export const EDITABLE_CONTENT_STATUSES: ReadonlySet<ArticleStatus> = new Set([
-  'idea',
-  'researching',
-  'drafting',
-]);
+export const EDITABLE_CONTENT_STATUSES: ReadonlySet<ArticleStatus> = new Set(
+  CONTENT_EDITABLE_STATUSES,
+);
 
 export type ActorKind = 'author' | 'reviewer' | 'author_or_reviewer';
 export type GateKind = 'inputs' | 'reviewable' | 'planned';
@@ -119,12 +120,18 @@ export type FactTotals = Readonly<
   Record<FactType, { readonly count: number; readonly chars: number }>
 >;
 
+export interface FactLinkStatus {
+  readonly label: string;
+  readonly status: FactStatus;
+}
+
 export interface GateContext {
   readonly style: StyleConfig | undefined;
   readonly productId: string | null;
   readonly plannedAt: Date | null;
   readonly totals: FactTotals;
   readonly latest: VersionInfo | undefined;
+  readonly links: readonly FactLinkStatus[];
 }
 
 export interface RequirementResult {
@@ -191,10 +198,10 @@ export function gateProblems(rule: TransitionRule, context: GateContext): string
 
 function reviewProblems(context: GateContext): string[] {
   const { latest, style, productId } = context;
+  const problems = unapprovedLinkProblems(context.links);
   if (!latest) {
-    return ['Нет версии текста: её создаёт генерация или ручная правка'];
+    return [...problems, 'Нет версии текста: её создаёт генерация или ручная правка'];
   }
-  const problems: string[] = [];
   const blocking = countBlockingChecks(latest.checks);
   if (blocking > 0) {
     problems.push(`В версии ${latest.number} блокирующих проверок: ${blocking}`);
@@ -207,6 +214,19 @@ function reviewProblems(context: GateContext): string[] {
     problems.push(`В версии ${latest.number} нет маркировки рекламы`);
   }
   return problems;
+}
+
+// Материал опирается только на одобренные факты: привязанный черновик или заменённый факт
+// не даёт пройти на ревью, пока автор не уберёт его или не привяжет одобренную замену.
+function unapprovedLinkProblems(links: readonly FactLinkStatus[]): string[] {
+  const pending = links.filter((link) => link.status !== 'approved');
+  if (pending.length === 0) {
+    return [];
+  }
+  const list = pending
+    .map((link) => `${link.label} (${FACT_STATUS_LABELS[link.status].toLowerCase()})`)
+    .join(', ');
+  return [`Привязанные факты не одобрены: ${list}`];
 }
 
 export function countBlockingChecks(checks: readonly VersionCheck[]): number {

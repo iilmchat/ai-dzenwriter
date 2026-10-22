@@ -1,15 +1,24 @@
-import { Controller, Get, Inject } from '@nestjs/common';
-import type {
-  ArticleFormat,
-  FormatCard,
-  Product,
-  StyleCard,
-  StyleConfig,
-  FormatConfig,
+import { Body, Controller, Get, Inject, Param, Patch, Post } from '@nestjs/common';
+import {
+  createProductInputSchema,
+  updateProductInputSchema,
+  type ArticleFormat,
+  type CreateProductInput,
+  type FormatCard,
+  type Product,
+  type StyleCard,
+  type StyleConfig,
+  type FormatConfig,
+  type UpdateProductInput,
 } from '@dzenwriter/shared';
+import { AuthUser, Roles } from '../auth/auth.decorators';
+import type { SessionUser } from '../auth/auth.service';
+import { uuidParam } from '../common/uuid-param';
+import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/tokens';
 import { CATALOG_REPOSITORY, type CatalogRepository } from './catalog.repository';
+import { ProductsService } from './products.service';
 
 // Стили и форматы — из config/ (проверены при старте), продукты — из БД.
 @Controller()
@@ -17,6 +26,7 @@ export class CatalogController {
   constructor(
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(CATALOG_REPOSITORY) private readonly catalog: CatalogRepository,
+    private readonly productsService: ProductsService,
   ) {}
 
   @Get('styles')
@@ -36,6 +46,25 @@ export class CatalogController {
   @Get('products')
   async products(): Promise<{ items: Product[] }> {
     return { items: await this.catalog.listProducts() };
+  }
+
+  @Post('products')
+  @Roles('admin')
+  createProduct(
+    @Body(new ZodValidationPipe(createProductInputSchema)) body: CreateProductInput,
+    @AuthUser() actor: SessionUser,
+  ): Promise<Product> {
+    return this.productsService.create(actor, body);
+  }
+
+  @Patch('products/:id')
+  @Roles('admin')
+  updateProduct(
+    @Param('id', uuidParam('Некорректный идентификатор продукта')) id: string,
+    @Body(new ZodValidationPipe(updateProductInputSchema)) body: UpdateProductInput,
+    @AuthUser() actor: SessionUser,
+  ): Promise<Product> {
+    return this.productsService.update(actor, id, body, new Date());
   }
 }
 

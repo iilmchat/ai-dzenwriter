@@ -50,6 +50,19 @@ export function endOfDayIso(date: string): string {
   return new Date(`${date}T23:59:59${MOSCOW_OFFSET}`).toISOString();
 }
 
+export function capitalize(text: string): string {
+  return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+export function truncate(text: string, limit: number): string {
+  return text.length > limit ? `${text.slice(0, limit - 1)}…` : text;
+}
+
+// Значение из select или query: только то, что есть в списке, иначе пустая строка.
+export function parseOption<T extends string>(options: readonly T[], value: string): T | '' {
+  return options.find((option) => option === value) ?? '';
+}
+
 export function parseKeywords(value: string): string[] {
   return value
     .split(',')

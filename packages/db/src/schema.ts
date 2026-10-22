@@ -140,13 +140,16 @@ export const facts = pgTable(
       .references(() => users.id),
     approvedBy: uuid('approved_by').references(() => users.id),
     approvedAt: timestampTz('approved_at'),
+    supersedesId: uuid('supersedes_id').references((): AnyPgColumn => facts.id),
     supersededBy: uuid('superseded_by').references((): AnyPgColumn => facts.id),
+    version: integer('version').notNull().default(1),
     createdAt: createdAt(),
     updatedAt: timestampTz('updated_at').notNull().defaultNow(),
   },
   (table) => [
     check('facts_type_check', oneOf(table.type.name, FACT_TYPES)),
     check('facts_status_check', oneOf(table.status.name, FACT_STATUSES)),
+    check('facts_supersedes_self_check', sql.raw('supersedes_id IS NULL OR supersedes_id <> id')),
     check(
       'facts_news_source_approved_check',
       sql.raw(
@@ -164,6 +167,7 @@ export const facts = pgTable(
       sql.raw("status <> 'approved' OR type <> 'product_fact' OR product_id IS NOT NULL"),
     ),
     index('facts_type_status_idx').on(table.type, table.status),
+    index('facts_supersedes_id_idx').on(table.supersedesId),
     index('facts_text_search_idx').using('gin', sql`to_tsvector('russian', ${table.text})`),
   ],
 );

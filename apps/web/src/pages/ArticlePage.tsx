@@ -1,7 +1,7 @@
 import {
   ARTICLE_FORMAT_LABELS,
   ARTICLE_STATUS_LABELS,
-  FACT_TYPE_LABELS,
+  CONTENT_EDITABLE_STATUSES,
   TONE_LABELS,
   type ArticleDetail,
 } from '@dzenwriter/shared';
@@ -10,7 +10,9 @@ import { Link, useParams } from 'react-router';
 import { fetchArticle } from '../api/articles';
 import { errorMessage } from '../api/client';
 import { ArticleEditForm } from '../features/article/ArticleEditForm';
+import { ArticleFactsPanel } from '../features/article/ArticleFactsPanel';
 import { TransitionForm } from '../features/article/TransitionForm';
+import { useCatalog } from '../features/catalog/useCatalog';
 import { formatDate, formatDateTime } from '../lib/format';
 import { useSession } from '../session/SessionContext';
 import { FOCUS_RING, PANEL_CLASS } from '../shared/ui/classes';
@@ -22,12 +24,6 @@ type ArticleState =
   | { readonly phase: 'error'; readonly message: string };
 
 const ORIGIN_LABELS: Record<string, string> = { generated: 'генерация', manual: 'ручная правка' };
-const FACT_STATUS_LABELS: Record<string, string> = {
-  draft: 'черновик',
-  approved: 'одобрен',
-  rejected: 'отклонён',
-  superseded: 'заменён',
-};
 const REVIEW_LABELS: Record<string, string> = {
   approved: 'Утверждено',
   changes_requested: 'Возвращено на доработку',
@@ -40,6 +36,7 @@ const PUBLICATION_LABELS: Record<string, string> = {
 export function ArticlePage() {
   const { id = '' } = useParams();
   const { state: session } = useSession();
+  const catalog = useCatalog();
   const [state, setState] = useState<ArticleState>({ phase: 'loading' });
 
   useEffect(() => {
@@ -70,11 +67,11 @@ export function ArticlePage() {
 
   const article = state.article;
   const user = session.phase === 'authenticated' ? session.user : undefined;
-  const canEdit =
-    user !== undefined &&
-    (user.id === article.owner.id || user.role === 'admin') &&
-    article.status !== 'archived' &&
-    article.status !== 'published';
+  const isOwnerOrAdmin =
+    user !== undefined && (user.id === article.owner.id || user.role === 'admin');
+  const canEdit = isOwnerOrAdmin && article.status !== 'archived' && article.status !== 'published';
+  const canChangeFacts = isOwnerOrAdmin && CONTENT_EDITABLE_STATUSES.includes(article.status);
+  const style = catalog.styles.find((item) => item.id === article.styleId);
   const replace = (next: ArticleDetail) => setState({ phase: 'ready', article: next });
 
   return (
@@ -108,7 +105,12 @@ export function ArticlePage() {
 
       <div className="grid gap-6 lg:grid-cols-2">
         <VersionsPanel article={article} />
-        <FactsPanel article={article} />
+        <ArticleFactsPanel
+          article={article}
+          style={style}
+          canEdit={canChangeFacts}
+          onChanged={replace}
+        />
       </div>
 
       <div className="grid gap-6 lg:grid-cols-2">
@@ -161,31 +163,6 @@ function VersionsPanel({ article }: { readonly article: ArticleDetail }) {
               {version.createdBy}, {formatDateTime(version.createdAt)}. Блокирующих проверок:{' '}
               {version.blockingChecks}
               {version.advertisingLabel ? ', маркировка рекламы есть' : ''}
-            </li>
-          ))}
-        </ul>
-      )}
-    </section>
-  );
-}
-
-function FactsPanel({ article }: { readonly article: ArticleDetail }) {
-  return (
-    <section aria-labelledby="facts-title" className={PANEL_CLASS}>
-      <h2 id="facts-title" className="font-display text-lg font-bold">
-        Факты материала
-      </h2>
-      {article.facts.length === 0 ? (
-        <p className="mt-3 text-sm text-on-surface-variant">
-          Факты ещё не привязаны. Факт-база появится в следующем этапе.
-        </p>
-      ) : (
-        <ul className="mt-4 flex flex-col gap-3 text-sm">
-          {article.facts.map((fact) => (
-            <li key={fact.label}>
-              {fact.label} · {FACT_TYPE_LABELS[fact.type]} ·{' '}
-              {FACT_STATUS_LABELS[fact.status] ?? fact.status}
-              {fact.sourceName ? ` · ${fact.sourceName}` : ''}
             </li>
           ))}
         </ul>

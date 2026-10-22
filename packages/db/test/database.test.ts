@@ -142,4 +142,20 @@ describe('схема и миграции', () => {
       }),
     ).rejects.toMatchObject({ code: '42501' });
   });
+
+  it('факт стартует с версии 1 и не может заменять сам себя', async () => {
+    await expect(
+      inRollback(sql, async (tx) => {
+        const userId = await insertUser(tx);
+        const [row] = await tx<{ id: string; version: number }[]>`
+          insert into facts (type, text, created_by)
+          values ('company_fact', 'факт', ${userId})
+          returning id, version
+        `;
+        if (!row) throw new Error('факт не создан');
+        expect(row.version).toBe(1);
+        await tx`update facts set supersedes_id = id where id = ${row.id}`;
+      }),
+    ).rejects.toMatchObject({ code: '23514' });
+  });
 });

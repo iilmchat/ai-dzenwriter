@@ -347,25 +347,28 @@ prototype/            HTML-прототип
 
 Префикс `/api/v1`. Ошибки — в формате RFC 9457 (`application/problem+json`). Для операций, которые создают запуски или публикации, нужен заголовок `Idempotency-Key`.
 
-| Метод и путь                                                     | Назначение                                       | Роль                  |
-| ---------------------------------------------------------------- | ------------------------------------------------ | --------------------- |
-| `GET /auth/github/start`, `GET /auth/github/callback`            | Вход через GitHub                                | —                     |
-| `POST /auth/logout`, `GET /me`                                   | Выход, текущий пользователь                      | любая                 |
-| `GET /styles`, `GET /formats`                                    | Стили и форматы (только чтение)                  | любая                 |
-| `GET /articles`, `POST /articles`                                | Список и создание материала                      | author                |
-| `GET /articles/{id}`, `PATCH /articles/{id}`                     | Карточка и метаданные (тема, стиль, формат)      | author                |
-| `POST /articles/{id}/transitions`                                | Смена статуса с гейтами                          | по правилам раздела 5 |
-| `GET /articles/{id}/facts`, `POST /articles/{id}/facts`          | Факты материала и привязка                       | author                |
-| `GET /facts`, `POST /facts`, `PATCH /facts/{id}`                 | Библиотека, одобрение, согласие                  | author, reviewer      |
-| `POST /articles/{id}/generations`                                | Запуск генерации, SSE со стадиями                | author                |
-| `GET /articles/{id}/versions`, `GET /articles/{id}/versions/{n}` | История версий                                   | author                |
-| `POST /articles/{id}/versions`                                   | Ручное сохранение версии с проверками            | author                |
-| `POST /articles/{id}/reviews`                                    | Утвердить или запросить правки                   | reviewer              |
-| `GET /articles/{id}/export`                                      | Пакет для Дзена (zip)                            | author                |
-| `POST /articles/{id}/publication`                                | Запланировать или отметить публикацию со ссылкой | author, reviewer      |
-| `GET /products`, `POST /products`, `PATCH /products/{id}`        | Справочник продуктов                             | author, admin         |
-| `GET /audit`                                                     | Журнал действий                                  | admin                 |
-| `GET /users`, `PATCH /users/{id}`                                | Список, роль и отключение (отзывает сессии)      | admin                 |
+| Метод и путь                                                        | Назначение                                                                 | Роль                                             |
+| ------------------------------------------------------------------- | -------------------------------------------------------------------------- | ------------------------------------------------ |
+| `GET /auth/github/start`, `GET /auth/github/callback`               | Вход через GitHub                                                          | —                                                |
+| `POST /auth/logout`, `GET /me`                                      | Выход, текущий пользователь                                                | любая                                            |
+| `GET /styles`, `GET /formats`                                       | Стили и форматы (только чтение)                                            | любая                                            |
+| `GET /articles`, `POST /articles`                                   | Список и создание материала                                                | author                                           |
+| `GET /articles/{id}`, `PATCH /articles/{id}`                        | Карточка и метаданные (тема, стиль, формат)                                | author                                           |
+| `POST /articles/{id}/transitions`                                   | Смена статуса с гейтами                                                    | по правилам раздела 5                            |
+| `POST /articles/{id}/facts`, `DELETE /articles/{id}/facts/{factId}` | Привязка и отвязка фактов, метки F<n>; факты материала приходят в карточке | владелец, до утверждения                         |
+| `GET /facts`, `POST /facts`, `PATCH /facts/{id}`                    | Библиотека и правка черновика                                              | любой вошедший; правка — автор или администратор |
+| `POST /facts/{id}/approve`, `POST /facts/{id}/reject`               | Одобрение и отклонение                                                     | ревьюер, не автор факта                          |
+| `POST /facts/{id}/consent`, `POST /facts/{id}/consent/withdraw`     | Согласие на личный опыт и отзыв (текст удаляется)                          | ревьюер; отзыв также автор заметки               |
+| `POST /facts/{id}/corrections`                                      | Исправление одобренного факта                                              | любой вошедший                                   |
+| `POST /articles/{id}/generations`                                   | Запуск генерации, SSE со стадиями                                          | author                                           |
+| `GET /articles/{id}/versions`, `GET /articles/{id}/versions/{n}`    | История версий                                                             | author                                           |
+| `POST /articles/{id}/versions`                                      | Ручное сохранение версии с проверками                                      | author                                           |
+| `POST /articles/{id}/reviews`                                       | Утвердить или запросить правки                                             | reviewer                                         |
+| `GET /articles/{id}/export`                                         | Пакет для Дзена (zip)                                                      | author                                           |
+| `POST /articles/{id}/publication`                                   | Запланировать или отметить публикацию со ссылкой                           | author, reviewer                                 |
+| `GET /products`, `POST /products`, `PATCH /products/{id}`           | Справочник продуктов (архивирование без удаления)                          | чтение — все, запись — администратор             |
+| `GET /audit`                                                        | Журнал действий                                                            | admin                                            |
+| `GET /users`, `PATCH /users/{id}`                                   | Список, роль и отключение (отзывает сессии)                                | admin                                            |
 
 ---
 

@@ -28,6 +28,7 @@ function context(overrides: Partial<GateContext> = {}): GateContext {
     plannedAt: null,
     totals: emptyFactTotals(),
     latest: undefined,
+    links: [],
     ...overrides,
   };
 }
@@ -137,6 +138,20 @@ describe('проверка перед ревью', () => {
     expect(gateProblems(rule!, context({ latest }))).toEqual([
       'В версии 2 блокирующих проверок: 1',
     ]);
+  });
+
+  it('привязанный черновик или заменённый факт не пускают на ревью', () => {
+    const rule = findTransition('drafting', 'in_review');
+    const latest = { number: 1, advertisingLabel: false, checks: [] };
+    const links = [
+      { label: 'F1', status: 'approved' as const },
+      { label: 'F2', status: 'draft' as const },
+      { label: 'F3', status: 'superseded' as const },
+    ];
+    expect(gateProblems(rule!, context({ latest, links }))).toEqual([
+      'Привязанные факты не одобрены: F2 (черновик), F3 (заменён)',
+    ]);
+    expect(gateProblems(rule!, context({ latest, links: [links[0]!] }))).toEqual([]);
   });
 
   it('текст о продукте без маркировки рекламы не проходит ревью', () => {

@@ -21,6 +21,12 @@ export function AppShell() {
             <NavLink to="/" end className={navClass}>
               Доска
             </NavLink>
+            <NavLink to="/facts" className={navClass}>
+              Факт-база
+            </NavLink>
+            <NavLink to="/products" className={navClass}>
+              Продукты
+            </NavLink>
             <NavLink to="/styles" className={navClass}>
               Стили и форматы
             </NavLink>

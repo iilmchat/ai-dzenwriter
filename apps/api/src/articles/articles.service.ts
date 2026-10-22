@@ -6,20 +6,24 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import type {
-  ArticleDetail,
-  ArticleFormat,
-  ArticleListQuery,
-  ArticleListResponse,
-  CreateArticleInput,
-  CreateArticleResponse,
-  StyleConfig,
-  TransitionInput,
-  UpdateArticleInput,
+import {
+  FACT_STATUS_LABELS,
+  FACT_TYPE_LABELS,
+  policyAllowsFactType,
+  type ArticleDetail,
+  type ArticleFormat,
+  type ArticleListQuery,
+  type ArticleListResponse,
+  type CreateArticleInput,
+  type CreateArticleResponse,
+  type StyleConfig,
+  type TransitionInput,
+  type UpdateArticleInput,
 } from '@dzenwriter/shared';
 import { CATALOG_REPOSITORY, type CatalogRepository } from '../catalog/catalog.repository';
 import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/tokens';
+import { FACTS_REPOSITORY, type FactsRepository } from '../facts/facts.repository';
 import {
   type Actor,
   describeTransition,
@@ -60,6 +64,7 @@ export class ArticlesService {
   constructor(
     @Inject(ARTICLES_REPOSITORY) private readonly repository: ArticlesRepository,
     @Inject(CATALOG_REPOSITORY) private readonly catalog: CatalogRepository,
+    @Inject(FACTS_REPOSITORY) private readonly facts: FactsRepository,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -122,6 +127,69 @@ export class ArticlesService {
 
   get(actor: Actor, id: string): Promise<ArticleDetail> {
     return this.detail(actor, id);
+  }
+
+  async attachFact(actor: Actor, articleId: string, factId: string): Promise<ArticleDetail> {
+    const view = await this.requireView(articleId);
+    this.ensureFactsEditable(actor, view);
+    const fact = await this.facts.findFact(factId);
+    if (!fact) {
+      throw new NotFoundException('Факт не найден');
+    }
+    if (fact.status !== 'draft' && fact.status !== 'approved') {
+      throw new UnprocessableEntityException(
+        `Факт в статусе «${FACT_STATUS_LABELS[fact.status]}» не привязывается к материалу`,
+      );
+    }
+    const style = this.requireStyle(view.styleId);
+    if (!policyAllowsFactType(style.fact_policy, fact.type)) {
+      throw new UnprocessableEntityException(
+        `Факт типа «${FACT_TYPE_LABELS[fact.type]}» не подходит стилю «${style.name}»`,
+      );
+    }
+    if (fact.productId !== null && view.productId !== null && fact.productId !== view.productId) {
+      throw new UnprocessableEntityException('Факт относится к другому продукту');
+    }
+
+    const label = await this.repository.withTransaction(async (tx) => {
+      const assigned = await tx.attachFact(articleId, factId, actor.id);
+      if (assigned !== undefined) {
+        await tx.insertAudit({
+          actorId: actor.id,
+          action: 'article.fact_attach',
+          entityType: 'article',
+          entityId: articleId,
+          payload: { factId, label: assigned },
+        });
+      }
+      return assigned;
+    });
+    if (label === undefined) {
+      throw new ConflictException('Факт уже привязан к материалу');
+    }
+    return this.detail(actor, articleId);
+  }
+
+  async detachFact(actor: Actor, articleId: string, factId: string): Promise<ArticleDetail> {
+    const view = await this.requireView(articleId);
+    this.ensureFactsEditable(actor, view);
+    const detached = await this.repository.withTransaction(async (tx) => {
+      const removed = await tx.detachFact(articleId, factId);
+      if (removed) {
+        await tx.insertAudit({
+          actorId: actor.id,
+          action: 'article.fact_detach',
+          entityType: 'article',
+          entityId: articleId,
+          payload: { factId },
+        });
+      }
+      return removed;
+    });
+    if (!detached) {
+      throw new NotFoundException('Факт не привязан к материалу');
+    }
+    return this.detail(actor, articleId);
   }
 
   async update(
@@ -314,9 +382,10 @@ export class ArticlesService {
   }
 
   private async gateContext(view: ArticleView): Promise<GateContext> {
-    const [totals, latest] = await Promise.all([
+    const [totals, latest, links] = await Promise.all([
       this.repository.approvedFactTotals(view.id),
       this.repository.latestVersion(view.id),
+      this.repository.listLinkedFacts(view.id),
     ]);
     return {
       style: this.config.styles.get(view.styleId),
@@ -324,7 +393,20 @@ export class ArticlesService {
       plannedAt: view.plannedAt,
       totals,
       latest,
+      links: links.map((link) => ({ label: link.label, status: link.status })),
     };
+  }
+
+  // Факты меняют то, на что опирается текст, поэтому — владелец или администратор и до утверждения.
+  private ensureFactsEditable(actor: Actor, view: ArticleView): void {
+    if (actor.id !== view.ownerId && actor.role !== 'admin') {
+      throw new ForbiddenException('Менять факты материала может его автор или администратор');
+    }
+    if (!EDITABLE_CONTENT_STATUSES.has(view.status)) {
+      throw new ConflictException(
+        'Факты меняются только до утверждения: сначала верните материал в черновик',
+      );
+    }
   }
 
   private async requireView(id: string): Promise<ArticleView> {

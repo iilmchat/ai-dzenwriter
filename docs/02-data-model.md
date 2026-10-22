@@ -79,40 +79,46 @@
 
 ### facts
 
-| Поле                                           | Тип                        | Примечание                                   |
-| ---------------------------------------------- | -------------------------- | -------------------------------------------- |
-| `id`                                           | uuid, PK                   |                                              |
-| `type`                                         | fact_type                  |                                              |
-| `text`                                         | text                       | Текст факта или обезличенная заметка опыта   |
-| `source_name`                                  | text, null                 | Издание, документ или «внутренние данные»    |
-| `source_url`                                   | text, null                 | Обязателен для `news_source`                 |
-| `source_published_at`                          | date, null                 | Обязательна для `news_source`                |
-| `product_id`                                   | uuid, FK на products, null | Обязателен для `product_fact`                |
-| `status`                                       | fact_status                |                                              |
-| `mentions_client`                              | boolean                    | Текст содержит название клиента              |
-| `client_permission`                            | boolean                    | Разрешение на название клиента получено      |
-| `consent_confirmed`                            | boolean                    | Для `experience_note`: согласие подтверждено |
-| `consent_confirmed_by`, `consent_confirmed_at` | uuid, timestamptz, null    | Кто и когда подтвердил согласие              |
-| `anonymized`                                   | boolean                    | Имена заменены ролями                        |
-| `created_by`, `approved_by`                    | uuid, FK на users          |                                              |
-| `approved_at`                                  | timestamptz, null          |                                              |
-| `superseded_by`                                | uuid, FK на facts, null    | Заменяющий факт                              |
+| Поле                                           | Тип                        | Примечание                                                                   |
+| ---------------------------------------------- | -------------------------- | ---------------------------------------------------------------------------- |
+| `id`                                           | uuid, PK                   |                                                                              |
+| `type`                                         | fact_type                  |                                                                              |
+| `text`                                         | text                       | Текст факта или обезличенная заметка опыта                                   |
+| `source_name`                                  | text, null                 | Издание, документ или «внутренние данные»                                    |
+| `source_url`                                   | text, null                 | Обязателен для `news_source`                                                 |
+| `source_published_at`                          | date, null                 | Обязательна для `news_source`                                                |
+| `product_id`                                   | uuid, FK на products, null | Обязателен для `product_fact`                                                |
+| `status`                                       | fact_status                |                                                                              |
+| `mentions_client`                              | boolean                    | Текст содержит название клиента                                              |
+| `client_permission`                            | boolean                    | Разрешение на название клиента получено                                      |
+| `consent_confirmed`                            | boolean                    | Для `experience_note`: согласие подтверждено                                 |
+| `consent_confirmed_by`, `consent_confirmed_at` | uuid, timestamptz, null    | Кто и когда подтвердил согласие                                              |
+| `anonymized`                                   | boolean                    | Имена заменены ролями                                                        |
+| `created_by`, `approved_by`                    | uuid, FK на users          |                                                                              |
+| `approved_at`                                  | timestamptz, null          |                                                                              |
+| `superseded_by`                                | uuid, FK на facts, null    | Заменяющий факт                                                              |
+| `supersedes_id`                                | uuid, FK на facts, null    | Исправляемый факт: исправление ссылается на одобренный факт, который заменит |
+| `version`                                      | int                        | Оптимистичная блокировка, +1 при каждом изменении                            |
 
 Ограничения, проверяются в CHECK и в сервисе:
 
 - `approved` для `news_source` требует `source_url` и `source_published_at`;
 - `approved` для `experience_note` требует `consent_confirmed` и `anonymized`;
 - `approved` для `product_fact` требует `product_id`;
-- одобренный факт не редактируется: исправление создаёт новый факт, старый переводится в `superseded`.
+- одобренный факт не редактируется: исправление создаёт новый факт, старый переводится в `superseded`;
+- `supersedes_id` не равен `id` (CHECK `facts_supersedes_self_check`);
+- исправление переводит исходный факт в `superseded` в момент одобрения исправления, а не при его создании: до этого исходный факт продолжает работать. На один факт — одно исправление на проверке.
+
+Исключение из неизменяемости — отзыв согласия на заметку опыта: текст очищается, отметки сбрасываются, статус становится `rejected` (или остаётся `superseded`). В аудите остаются ID и дата.
 
 ### article_facts
 
-| Поле                   | Тип                  | Примечание                                        |
-| ---------------------- | -------------------- | ------------------------------------------------- |
-| `article_id`           | uuid, FK на articles | PK вместе с `fact_id`                             |
-| `fact_id`              | uuid, FK на facts    |                                                   |
-| `label`                | text                 | `F1`, `F2` и так далее; уникален внутри материала |
-| `added_by`, `added_at` |                      |                                                   |
+| Поле                   | Тип                  | Примечание                                                                                                                                                     |
+| ---------------------- | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `article_id`           | uuid, FK на articles | PK вместе с `fact_id`                                                                                                                                          |
+| `fact_id`              | uuid, FK на facts    |                                                                                                                                                                |
+| `label`                | text                 | `F1`, `F2` и так далее; уникален внутри материала; номер не повторяется: берётся наибольший из текущих связей и записей `article.fact_attach` в журнале аудита |
+| `added_by`, `added_at` |                      |                                                                                                                                                                |
 
 ### article_versions
 
@@ -247,6 +253,6 @@ erDiagram
 ## 6. Миграции
 
 - Миграции Drizzle в `packages/db/migrations`, только вперёд, без правок уже применённых файлов.
-- Состав: `0000` — схема, `0001` — триггеры неизменяемости, `0002` — UUID по умолчанию в БД.
+- Состав: `0000` — схема, `0001` — триггеры неизменяемости, `0002` — UUID по умолчанию в БД, `0003` — версия фактов и исправления (`supersedes_id`).
 - Каждая миграция проверяется на пустой базе и на базе с демо-данными (seed).
 - Удаление колонок выполняется в два релиза: сначала перестаём писать, потом удаляем.

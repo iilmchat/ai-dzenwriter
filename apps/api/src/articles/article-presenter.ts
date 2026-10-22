@@ -67,9 +67,13 @@ export function toPublicationSummary(
 
 export function toFactLink(record: LinkedFactRecord): ArticleDetail['facts'][number] {
   return {
+    factId: record.factId,
     label: record.label,
     type: record.type,
     status: record.status,
+    text: record.text,
     sourceName: record.sourceName,
+    sourceUrl: record.sourceUrl,
+    sourcePublishedAt: record.sourcePublishedAt,
   };
 }

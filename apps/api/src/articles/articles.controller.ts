@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -16,6 +17,8 @@ import {
   type ArticleListQuery,
   type ArticleListResponse,
   articleListQuerySchema,
+  attachFactInputSchema,
+  type AttachFactInput,
   type CreateArticleInput,
   type CreateArticleResponse,
   createArticleInputSchema,
@@ -26,6 +29,7 @@ import {
 } from '@dzenwriter/shared';
 import { AuthUser } from '../auth/auth.decorators';
 import type { SessionUser } from '../auth/auth.service';
+import { uuidParam } from '../common/uuid-param';
 import { ZodValidationPipe } from '../common/zod-validation.pipe';
 import { ArticlesService } from './articles.service';
 
@@ -75,6 +79,24 @@ export class ArticlesController {
     @AuthUser() actor: SessionUser,
   ): Promise<ArticleDetail> {
     return this.articles.transition(actor, id, body, new Date());
+  }
+
+  @Post(':id/facts')
+  attachFact(
+    @Param('id', articleIdPipe()) id: string,
+    @Body(new ZodValidationPipe(attachFactInputSchema)) body: AttachFactInput,
+    @AuthUser() actor: SessionUser,
+  ): Promise<ArticleDetail> {
+    return this.articles.attachFact(actor, id, body.factId);
+  }
+
+  @Delete(':id/facts/:factId')
+  detachFact(
+    @Param('id', articleIdPipe()) id: string,
+    @Param('factId', uuidParam('Некорректный идентификатор факта')) factId: string,
+    @AuthUser() actor: SessionUser,
+  ): Promise<ArticleDetail> {
+    return this.articles.detachFact(actor, id, factId);
   }
 }
 

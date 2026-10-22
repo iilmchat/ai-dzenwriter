@@ -1,4 +1,12 @@
-import type { ArticleFormat, ArticleStatus, FactPolicy, FactType, Tone, UserRole } from './enums';
+import type {
+  ArticleFormat,
+  ArticleStatus,
+  FactPolicy,
+  FactStatus,
+  FactType,
+  Tone,
+  UserRole,
+} from './enums';
 
 // Подписи для интерфейса и сообщений API. Значения перечислений в коде остаются латиницей.
 export const ARTICLE_STATUS_LABELS: Record<ArticleStatus, string> = {
@@ -25,6 +33,13 @@ export const FACT_TYPE_LABELS: Record<FactType, string> = {
   company_fact: 'факт о компании',
   product_fact: 'факт о продукте',
   experience_note: 'заметка опыта',
+};
+
+export const FACT_STATUS_LABELS: Record<FactStatus, string> = {
+  draft: 'Черновик',
+  approved: 'Одобрен',
+  rejected: 'Отклонён',
+  superseded: 'Заменён',
 };
 
 export const FACT_POLICY_LABELS: Record<FactPolicy, string> = {

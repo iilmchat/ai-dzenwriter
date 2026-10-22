@@ -4,11 +4,13 @@ import { DatabaseService } from '../database/database.service';
 import { CatalogController } from './catalog.controller';
 import { CATALOG_REPOSITORY } from './catalog.repository';
 import { DrizzleCatalogRepository } from './drizzle-catalog.repository';
+import { ProductsService } from './products.service';
 
 @Module({
   imports: [DatabaseModule],
   controllers: [CatalogController],
   providers: [
+    ProductsService,
     {
       provide: CATALOG_REPOSITORY,
       inject: [DatabaseService],

@@ -73,10 +73,14 @@ export interface PublicationRecord {
 }
 
 export interface LinkedFactRecord {
+  readonly factId: string;
   readonly label: string;
   readonly type: FactType;
   readonly status: FactStatus;
+  readonly text: string;
   readonly sourceName: string | null;
+  readonly sourceUrl: string | null;
+  readonly sourcePublishedAt: string | null;
 }
 
 export interface ArticleFilter {
@@ -153,6 +157,9 @@ export interface ArticlesRepository {
   listReviews(articleId: string, limit: number): Promise<ReviewRecord[]>;
   listPublications(articleId: string): Promise<PublicationRecord[]>;
   listLinkedFacts(articleId: string): Promise<LinkedFactRecord[]>;
+  // Метка F<n> назначается под блокировкой материала и не повторяется. undefined — факт уже привязан.
+  attachFact(articleId: string, factId: string, addedBy: string): Promise<string | undefined>;
+  detachFact(articleId: string, factId: string): Promise<boolean>;
   approvedFactTotals(articleId: string): Promise<FactTotals>;
   insertReview(review: NewReview): Promise<void>;
   insertPublication(publication: NewPublication): Promise<void>;

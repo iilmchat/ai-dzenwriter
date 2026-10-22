@@ -70,3 +70,18 @@ export function transitionArticle(id: string, input: TransitionInput): Promise<A
     schema: articleDetailSchema,
   });
 }
+
+export function attachFact(articleId: string, factId: string): Promise<ArticleDetail> {
+  return apiRequest(`/api/v1/articles/${articleId}/facts`, {
+    method: 'POST',
+    body: { factId },
+    schema: articleDetailSchema,
+  });
+}
+
+export function detachFact(articleId: string, factId: string): Promise<ArticleDetail> {
+  return apiRequest(`/api/v1/articles/${articleId}/facts/${factId}`, {
+    method: 'DELETE',
+    schema: articleDetailSchema,
+  });
+}

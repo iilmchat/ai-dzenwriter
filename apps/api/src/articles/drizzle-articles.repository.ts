@@ -2,6 +2,7 @@ import {
   articleFacts,
   articles,
   articleVersions,
+  auditLog,
   facts,
   publications,
   reviews,
@@ -11,6 +12,7 @@ import type {
   ArticleFormat,
   ArticleStatus,
   CheckSeverity,
+  FactStatus,
   FactType,
   Tone,
   VersionOrigin,
@@ -269,21 +271,84 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
   async listLinkedFacts(articleId: string): Promise<LinkedFactRecord[]> {
     const rows = await this.db
       .select({
+        factId: facts.id,
         label: articleFacts.label,
         type: facts.type,
         status: facts.status,
+        text: facts.text,
         sourceName: facts.sourceName,
+        sourceUrl: facts.sourceUrl,
+        sourcePublishedAt: facts.sourcePublishedAt,
       })
       .from(articleFacts)
       .innerJoin(facts, eq(facts.id, articleFacts.factId))
-      .where(eq(articleFacts.articleId, articleId))
-      .orderBy(articleFacts.label);
-    return rows.map((row) => ({
-      label: row.label,
-      type: row.type as FactType,
-      status: row.status as LinkedFactRecord['status'],
-      sourceName: row.sourceName,
-    }));
+      .where(eq(articleFacts.articleId, articleId));
+    return rows
+      .map((row) => ({
+        factId: row.factId,
+        label: row.label,
+        type: row.type as FactType,
+        status: row.status as FactStatus,
+        text: row.text,
+        sourceName: row.sourceName,
+        sourceUrl: row.sourceUrl,
+        sourcePublishedAt: row.sourcePublishedAt,
+      }))
+      .sort((left, right) => labelNumber(left.label) - labelNumber(right.label));
+  }
+
+  async attachFact(
+    articleId: string,
+    factId: string,
+    addedBy: string,
+  ): Promise<string | undefined> {
+    // Блокировка строки материала: два одновременных привязывания не получат одну метку.
+    await this.db
+      .select({ id: articles.id })
+      .from(articles)
+      .where(eq(articles.id, articleId))
+      .for('update');
+    const [existing] = await this.db
+      .select({ factId: articleFacts.factId })
+      .from(articleFacts)
+      .where(and(eq(articleFacts.articleId, articleId), eq(articleFacts.factId, factId)))
+      .limit(1);
+    if (existing) {
+      return undefined;
+    }
+    // Номер не повторяется: берём наибольший из текущих связей и из журнала. Отвязанная метка
+    // остаётся в журнале, иначе старые ссылки в версиях указывали бы на другой факт.
+    const linked = await this.db
+      .select({ label: articleFacts.label })
+      .from(articleFacts)
+      .where(eq(articleFacts.articleId, articleId));
+    const [logged] = await this.db
+      .select({
+        value: sql<number>`coalesce(max(case when ${auditLog.payload}->>'label' ~ '^F[0-9]+$' then substring(${auditLog.payload}->>'label' from 2)::int end), 0)`,
+      })
+      .from(auditLog)
+      .where(
+        and(
+          eq(auditLog.entityType, 'article'),
+          eq(auditLog.entityId, articleId),
+          eq(auditLog.action, 'article.fact_attach'),
+        ),
+      );
+    const highest = Math.max(
+      Number(logged?.value ?? 0),
+      ...linked.map((row) => labelNumber(row.label)),
+    );
+    const label = `F${highest + 1}`;
+    await this.db.insert(articleFacts).values({ articleId, factId, label, addedBy });
+    return label;
+  }
+
+  async detachFact(articleId: string, factId: string): Promise<boolean> {
+    const removed = await this.db
+      .delete(articleFacts)
+      .where(and(eq(articleFacts.articleId, articleId), eq(articleFacts.factId, factId)))
+      .returning({ factId: articleFacts.factId });
+    return removed.length === 1;
   }
 
   // Одобренные факты материала по типам: нужны для условий стиля. Тексты фактов не читаем.
@@ -405,6 +470,12 @@ function parseChecks(raw: unknown): VersionCheck[] {
 
 function isSeverity(value: unknown): value is CheckSeverity {
   return value === 'block' || value === 'warn' || value === 'info';
+}
+
+// Метки F1, F2, … сортируем по номеру: строковый порядок ставит F10 раньше F2.
+function labelNumber(label: string): number {
+  const match = /^F(\d+)$/.exec(label);
+  return match?.[1] ? Number(match[1]) : 0;
 }
 
 function requireRow<T>(row: T | undefined): T {

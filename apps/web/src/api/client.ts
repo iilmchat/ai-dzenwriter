@@ -16,7 +16,7 @@ export class ApiError extends Error {
 }
 
 interface RequestOptions<T> {
-  readonly method?: 'GET' | 'POST' | 'PATCH';
+  readonly method?: 'GET' | 'POST' | 'PATCH' | 'DELETE';
   readonly body?: unknown;
   readonly schema: Parser<T>;
 }
