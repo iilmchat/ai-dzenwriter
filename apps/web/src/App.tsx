@@ -4,6 +4,7 @@ import { BoardPage } from './pages/BoardPage';
 import { EditorPage } from './pages/EditorPage';
 import { FactsPage } from './pages/FactsPage';
 import { LoginPage } from './pages/LoginPage';
+import { MetricsPage } from './pages/MetricsPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { PublicationsPage } from './pages/PublicationsPage';
 import { StylesPage } from './pages/StylesPage';
@@ -30,6 +31,7 @@ export function App() {
           <Route path="facts" element={<FactsPage />} />
           <Route path="products" element={<ProductsPage />} />
           <Route path="publications" element={<PublicationsPage />} />
+          <Route path="metrics" element={<MetricsPage />} />
           <Route path="styles" element={<StylesPage />} />
           <Route
             path="admin/users"

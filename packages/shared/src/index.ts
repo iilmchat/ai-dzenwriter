@@ -10,5 +10,6 @@ export * from './articles';
 export * from './facts';
 export * from './generation';
 export * from './publications';
+export * from './metrics';
 export * from './labels';
 export * from './products';

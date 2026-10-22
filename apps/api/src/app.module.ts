@@ -8,6 +8,7 @@ import { FactsModule } from './facts/facts.module';
 import { GenerationModule } from './generation/generation.module';
 import { HealthModule } from './health/health.module';
 import { IdentityModule } from './identity/identity.module';
+import { MetricsModule } from './metrics/metrics.module';
 import { PublicationsModule } from './publications/publications.module';
 import { UsersModule } from './users/users.module';
 
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module';
     ArticlesModule,
     GenerationModule,
     PublicationsModule,
+    MetricsModule,
     HealthModule,
   ],
 })

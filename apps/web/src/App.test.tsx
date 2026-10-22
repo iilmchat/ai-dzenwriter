@@ -428,6 +428,88 @@ describe('приложение', () => {
     expect(posted).toEqual([{ comment: 'Это номер пункта правил.' }]);
   });
 
+  it('метрики показывают сравнение материалов и принимают ручной ввод', async () => {
+    const posted: unknown[] = [];
+    stubApi({
+      'GET /api/v1/metrics': () =>
+        json({
+          items: [
+            {
+              id: '22222222-2222-4222-8222-222222222222',
+              articleId: ARTICLE_ID,
+              topic: 'Агенты на длинных задачах',
+              externalUrl: 'https://dzen.ru/a/demo',
+              capturedOn: '2026-11-02',
+              views: 1500,
+              reads: 450,
+              avgReadSeconds: 90,
+              source: 'manual',
+              createdAt: '2026-11-02T10:00:00.000Z',
+              createdBy: 'anna',
+            },
+            {
+              id: '33333333-3333-4333-8333-333333333333',
+              articleId: ARTICLE_ID,
+              topic: 'Агенты на длинных задачах',
+              externalUrl: 'https://dzen.ru/a/demo',
+              capturedOn: '2026-11-01',
+              views: 1000,
+              reads: 300,
+              avgReadSeconds: 80,
+              source: 'manual',
+              createdAt: '2026-11-01T10:00:00.000Z',
+              createdBy: 'anna',
+            },
+          ],
+        }),
+      'GET /api/v1/publications': () =>
+        json({
+          items: [
+            {
+              articleId: ARTICLE_ID,
+              topic: 'Агенты на длинных задачах',
+              styleName: 'Новости индустрии',
+              status: 'published',
+              version: 3,
+              currentVersionNumber: 2,
+              plannedAt: null,
+              publishedAt: '2026-11-01T10:00:00.000Z',
+              externalUrl: 'https://dzen.ru/a/demo',
+              canExport: true,
+            },
+          ],
+        }),
+      'POST /api/v1/metrics': (init) => {
+        posted.push(JSON.parse(String(init?.body)));
+        return json({ snapshot: { id: '44444444-4444-4444-8444-444444444444' } });
+      },
+      'POST /api/v1/metrics/import': () => json({ imported: 1, updated: 0, skipped: [] }),
+    });
+
+    renderAt('/metrics');
+
+    expect(await screen.findByText('Сравнение материалов')).toBeTruthy();
+    // Прирост за день считается как разница с предыдущим снимком.
+    expect(screen.getByText('+500 за день')).toBeTruthy();
+    expect(screen.getByText('30%')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Материал'), { target: { value: ARTICLE_ID } });
+    fireEvent.change(screen.getByLabelText('Просмотры'), { target: { value: '2000' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Внести метрики' }));
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({ articleId: ARTICLE_ID, views: 2000 });
+    // Форма остаётся на экране во время тихой перезагрузки данных.
+    expect(screen.getByLabelText('Материал')).toBeTruthy();
+
+    fireEvent.change(screen.getByLabelText('Содержимое файла'), {
+      target: { value: 'url,captured_on,views,reads\nhttps://dzen.ru/a/demo,2026-11-03,10,2' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Импортировать' }));
+
+    expect(await screen.findByText(/Импортировано/)).toBeTruthy();
+  });
+
   it('публикации показывают материалы, пакет и отметку публикации', async () => {
     const posted: unknown[] = [];
     stubApi({

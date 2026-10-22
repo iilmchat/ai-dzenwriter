@@ -30,6 +30,9 @@ export function AppShell() {
             <NavLink to="/publications" className={navClass}>
               Публикации
             </NavLink>
+            <NavLink to="/metrics" className={navClass}>
+              Метрики
+            </NavLink>
             <NavLink to="/styles" className={navClass}>
               Стили и форматы
             </NavLink>
