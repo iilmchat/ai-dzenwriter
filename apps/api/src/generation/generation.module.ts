@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ArticlesModule } from '../articles/articles.module';
 import { CatalogModule } from '../catalog/catalog.module';
+import { ChecksModule } from '../checks/checks.module';
 import { LLM_CONFIG } from '../config/tokens';
 import type { LlmConfig } from '../config/llm-config';
 import { DatabaseModule } from '../database/database.module';
@@ -14,7 +15,7 @@ import { MockLlmProvider } from './mock-provider';
 import { OpenAiCompatibleProvider } from './openai-provider';
 
 @Module({
-  imports: [DatabaseModule, ArticlesModule, CatalogModule],
+  imports: [DatabaseModule, ArticlesModule, CatalogModule, ChecksModule],
   controllers: [GenerationController],
   providers: [
     GenerationService,

@@ -2,6 +2,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
 import { ConfigError } from '../src/config/errors';
+import { loadBasePrompt, resolvePromptsDir } from '../src/config/prompt-config';
 
 describe('загрузка конфигурации стилей и форматов', () => {
   it('находит config/ репозитория и загружает все стили и форматы', () => {
@@ -39,5 +40,14 @@ describe('загрузка конфигурации стилей и формат
     expect(message).toContain('checks.made_up_check');
     expect(message).toContain('id-mismatch.yaml');
     expect(message).toContain('illustrative_allowed');
+  });
+
+  it('список штампов в конфигурации совпадает с промптом', () => {
+    const config = loadAppConfig(resolveConfigDir());
+    const prompt = loadBasePrompt(resolvePromptsDir());
+
+    for (const phrase of config.checks.banned_phrases) {
+      expect(prompt.toLowerCase()).toContain(phrase.toLowerCase());
+    }
   });
 });

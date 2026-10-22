@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Param,
+  ParseIntPipe,
   ParseUUIDPipe,
   Patch,
   Post,
@@ -19,6 +20,8 @@ import {
   articleListQuerySchema,
   attachFactInputSchema,
   type AttachFactInput,
+  type ConfirmCheckInput,
+  confirmCheckInputSchema,
   type CreateArticleInput,
   type CreateArticleResponse,
   createArticleInputSchema,
@@ -100,6 +103,19 @@ export class ArticlesController {
     return this.articles.confirmGeneration(actor, id);
   }
 
+  // Подтверждение проверки автором: снимает блокировку и попадает в аудит.
+  @Post(':id/versions/:number/checks/:index/confirm')
+  @HttpCode(HttpStatus.OK)
+  confirmCheck(
+    @Param('id', articleIdPipe()) id: string,
+    @Param('number', versionNumberPipe()) number: number,
+    @Param('index', checkIndexPipe()) index: number,
+    @Body(new ZodValidationPipe(confirmCheckInputSchema)) body: ConfirmCheckInput,
+    @AuthUser() actor: SessionUser,
+  ): Promise<ArticleDetail> {
+    return this.articles.confirmCheck(actor, id, number, index, body.comment, new Date());
+  }
+
   @Delete(':id/facts/:factId')
   detachFact(
     @Param('id', articleIdPipe()) id: string,
@@ -113,5 +129,18 @@ export class ArticlesController {
 function articleIdPipe(): ParseUUIDPipe {
   return new ParseUUIDPipe({
     exceptionFactory: () => new BadRequestException('Некорректный идентификатор материала'),
+  });
+}
+
+// Номер версии и индекс проверки — целые числа из пути.
+function versionNumberPipe(): ParseIntPipe {
+  return new ParseIntPipe({
+    exceptionFactory: () => new BadRequestException('Некорректный номер версии'),
+  });
+}
+
+function checkIndexPipe(): ParseIntPipe {
+  return new ParseIntPipe({
+    exceptionFactory: () => new BadRequestException('Некорректный номер проверки'),
   });
 }

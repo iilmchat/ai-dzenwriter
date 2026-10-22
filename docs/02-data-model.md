@@ -136,7 +136,7 @@
 | `image_prompt`      | text                              |                                                                                 |
 | `advertising_label` | boolean                           | Маркировка рекламы поставлена                                                   |
 | `disclaimer_text`   | text, null                        |                                                                                 |
-| `claims`            | jsonb                             | Утверждения с типами и `fact_ids`                                               |
+| `claims`            | jsonb                             | Утверждения: текст, тип, `factIds` и смещение в `article_markdown`              |
 | `checks`            | jsonb                             | Результаты проверок: идентификатор, уровень, позиция, сообщение, решение автора |
 | `style_version`     | int                               | Версия стиля на момент генерации                                                |
 | `prompt_version`    | text                              | Версия промпта и конфигурации, git SHA                                          |
@@ -144,6 +144,8 @@
 | `created_by`        | uuid, FK на users                 |                                                                                 |
 
 Версия неизменяема: триггер `article_versions_append_only` (миграция 0001) запрещает UPDATE и DELETE.
+
+Решение автора по проверке хранится в самой проверке: `decision`, `comment`, `confirmedBy`, `confirmedAt`. Подтверждение создаёт новую версию с тем же текстом и обновлёнными проверками, потому что менять версию нельзя.
 
 ### generation_runs
 

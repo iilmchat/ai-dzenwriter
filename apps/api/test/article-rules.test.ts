@@ -131,8 +131,12 @@ describe('проверка перед ревью', () => {
       number: 2,
       advertisingLabel: false,
       checks: [
-        { id: 'numbers_must_map_to_facts', severity: 'block' as const },
-        { id: 'hook_every_3_paragraphs', severity: 'info' as const },
+        {
+          id: 'numbers_must_map_to_facts',
+          severity: 'block' as const,
+          message: 'Число 42 не в фактах',
+        },
+        { id: 'hook_every_3_paragraphs', severity: 'info' as const, message: 'Нет крючка' },
       ],
     };
     expect(gateProblems(rule!, context({ latest }))).toEqual([

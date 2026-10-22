@@ -116,7 +116,16 @@ describe.skipIf(!testDatabaseUrl)('DrizzleArticlesRepository на PostgreSQL', (
           tags: [],
           description: 'Описание',
           imagePrompt: 'Картинка',
-          checks: [{ id: 'numbers_must_map_to_facts', severity: 'block' }],
+          checks: [
+            {
+              id: 'numbers_must_map_to_facts',
+              severity: 'block',
+              message: 'Число 42 не найдено в фактах',
+              start: 10,
+              end: 12,
+              excerpt: '42',
+            },
+          ],
           styleVersion: 1,
           promptVersion: 'test',
           createdBy: owner.id,
@@ -147,7 +156,16 @@ describe.skipIf(!testDatabaseUrl)('DrizzleArticlesRepository на PostgreSQL', (
 
       const latest = await repo.latestVersion(articleId);
       expect(latest).toMatchObject({ number: 2, origin: 'manual' });
-      expect(latest?.checks).toEqual([{ id: 'numbers_must_map_to_facts', severity: 'block' }]);
+      expect(latest?.checks).toEqual([
+        {
+          id: 'numbers_must_map_to_facts',
+          severity: 'block',
+          message: 'Число 42 не найдено в фактах',
+          start: 10,
+          end: 12,
+          excerpt: '42',
+        },
+      ]);
 
       const totals = await repo.approvedFactTotals(articleId);
       expect(totals.company_fact).toEqual({ count: 1, chars: 4 });

@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { emptyFactTotals } from '../src/articles/article-rules';
 import { ArticlesService } from '../src/articles/articles.service';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
+import { ChecksService } from '../src/checks/checks.service';
 import type { LlmConfig } from '../src/config/llm-config';
 import { loadBasePrompt, resolvePromptsDir } from '../src/config/prompt-config';
 import { GenerationService, type GenerationEvent } from '../src/generation/generation.service';
@@ -42,7 +43,17 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
   const catalog = new InMemoryCatalog();
   const runs = new InMemoryGenerationRepository();
   const articlesService = new ArticlesService(articles, catalog, facts, config);
-  const service = new GenerationService(runs, articles, catalog, provider, config, llm, basePrompt);
+  const checks = new ChecksService(config);
+  const service = new GenerationService(
+    runs,
+    articles,
+    catalog,
+    provider,
+    checks,
+    config,
+    llm,
+    basePrompt,
+  );
 
   const addPerson = (login: string) => {
     const person = articles.addPerson(login);
@@ -207,6 +218,19 @@ describe('запуск генерации', () => {
       'checks',
     ]);
     expect(harness.runs.audit.at(-1)).toMatchObject({ action: 'generation.succeeded' });
+  });
+
+  it('версия сохраняется с результатами проверок', async () => {
+    const harness = setup();
+    const article = await createReadyArticle(harness);
+
+    const plan = await harness.service.prepare(harness.actors.owner, article.id, undefined);
+    await collect(harness.service, plan);
+
+    const version = harness.runs.versions[0];
+    // Текст заглушки короткий для формата «Новость» — это предупреждение.
+    expect(version?.checks.map((item) => item.id)).toContain('length_in_range');
+    expect(version?.claims.length).toBeGreaterThan(0);
   });
 
   it('в модель идут только одобренные факты', async () => {

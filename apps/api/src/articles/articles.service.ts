@@ -380,6 +380,7 @@ export class ArticlesService {
       reviews: reviews.map(toReviewSummary),
       publications: publications.map(toPublicationSummary),
       facts: facts.map(toFactLink),
+      checks: [...(context.latest?.checks ?? [])],
       generation: this.generationAvailability(actor, view, context, confirmation !== undefined),
     };
   }
@@ -449,6 +450,88 @@ export class ArticlesService {
     }
     return this.detail(actor, id);
   }
+  // Подтверждение проверки автором. Версия неизменяема, поэтому решение
+  // сохраняется новой версией с тем же текстом и обновлёнными проверками.
+  async confirmCheck(
+    actor: Actor,
+    articleId: string,
+    versionNumber: number,
+    checkIndex: number,
+    comment: string,
+    now: Date,
+  ): Promise<ArticleDetail> {
+    const view = await this.requireView(articleId);
+    if (actor.id !== view.ownerId && actor.role !== 'admin') {
+      throw new ForbiddenException('Подтвердить проверку может автор материала или администратор');
+    }
+    if (!EDITABLE_CONTENT_STATUSES.has(view.status)) {
+      throw new ConflictException(
+        'Проверки подтверждаются до утверждения: сначала верните материал в черновик',
+      );
+    }
+    const version = await this.repository.findVersion(articleId, versionNumber);
+    if (!version) {
+      throw new NotFoundException('Версия не найдена');
+    }
+    const target = version.checks[checkIndex];
+    if (!target) {
+      throw new NotFoundException('Проверка не найдена');
+    }
+    if (target.decision === 'confirmed') {
+      throw new ConflictException('Проверка уже подтверждена');
+    }
+
+    const checks = version.checks.map((item, index) =>
+      index === checkIndex
+        ? {
+            ...item,
+            decision: 'confirmed' as const,
+            comment,
+            confirmedBy: actor.id,
+            confirmedAt: now.toISOString(),
+          }
+        : item,
+    );
+
+    await this.repository.withTransaction(async (tx) => {
+      await tx.insertVersion(
+        {
+          articleId,
+          origin: version.origin,
+          title: version.title,
+          articleMarkdown: version.articleMarkdown,
+          seoTitle: version.seoTitle,
+          tags: version.tags,
+          description: version.description,
+          imagePrompt: version.imagePrompt,
+          advertisingLabel: version.advertisingLabel,
+          disclaimerText: version.disclaimerText,
+          claims: version.claims,
+          checks,
+          styleVersion: version.styleVersion,
+          promptVersion: version.promptVersion,
+          generationRunId: version.generationRunId,
+          createdBy: actor.id,
+        },
+        now,
+      );
+      await tx.insertAudit({
+        actorId: actor.id,
+        action: 'check.confirm',
+        entityType: 'article',
+        entityId: articleId,
+        payload: {
+          versionNumber,
+          checkIndex,
+          checkId: target.id,
+          severity: target.severity,
+        },
+      });
+    });
+
+    return this.detail(actor, articleId);
+  }
+
   private async gateContext(view: ArticleView): Promise<GateContext> {
     const [totals, latest, links] = await Promise.all([
       this.repository.approvedFactTotals(view.id),

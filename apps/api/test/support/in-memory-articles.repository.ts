@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ArticleStatus } from '@dzenwriter/shared';
+import type { ArticleStatus, VersionClaim } from '@dzenwriter/shared';
 import type { AuditRecord } from '../../src/audit/audit.record';
 import { emptyFactTotals, type FactTotals } from '../../src/articles/article-rules';
 import type {
@@ -16,8 +16,10 @@ import type {
   PersonRef,
   PublicationRecord,
   ReviewRecord,
+  VersionContent,
   VersionRecord,
 } from '../../src/articles/articles.repository';
+import type { NewVersionRecord } from '../../src/articles/version-writer';
 import type { InMemoryFactsRepository } from './in-memory-facts.repository';
 
 interface FactLink {
@@ -32,6 +34,22 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
   readonly articles = new Map<string, ArticleRecord>();
   readonly people = new Map<string, PersonRef>();
   readonly versions = new Map<string, VersionRecord[]>();
+  readonly versionContent = new Map<
+    string,
+    {
+      readonly title: string;
+      readonly articleMarkdown: string;
+      readonly seoTitle: string;
+      readonly tags: readonly string[];
+      readonly description: string;
+      readonly imagePrompt: string;
+      readonly disclaimerText: string | null;
+      readonly claims: readonly VersionClaim[];
+      readonly styleVersion: number;
+      readonly promptVersion: string;
+      readonly generationRunId: string | null;
+    }
+  >();
   readonly reviews: (NewReview & { readonly createdAt: Date })[] = [];
   readonly publications: NewPublication[] = [];
   readonly links = new Map<string, FactLink[]>();
@@ -81,6 +99,11 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
 
   setTotals(articleId: string, totals: FactTotals): void {
     this.totals.set(articleId, totals);
+  }
+
+  // Текущая версия материала: нужна для ожидаемой версии в запросах.
+  article(id: string): ArticleRecord | undefined {
+    return this.articles.get(id);
   }
 
   async withTransaction<T>(work: (repository: ArticlesRepository) => Promise<T>): Promise<T> {
@@ -170,6 +193,65 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
       .slice(0, limit);
   }
 
+  async findVersion(articleId: string, number: number): Promise<VersionContent | undefined> {
+    const record = (this.versions.get(articleId) ?? []).find((item) => item.number === number);
+    if (!record) {
+      return undefined;
+    }
+    const content = this.versionContent.get(`${articleId}:${number}`);
+    return {
+      ...record,
+      title: content?.title ?? '',
+      articleMarkdown: content?.articleMarkdown ?? '',
+      seoTitle: content?.seoTitle ?? '',
+      tags: content?.tags ?? [],
+      description: content?.description ?? '',
+      imagePrompt: content?.imagePrompt ?? '',
+      disclaimerText: content?.disclaimerText ?? null,
+      claims: content?.claims ?? [],
+      styleVersion: content?.styleVersion ?? 1,
+      promptVersion: content?.promptVersion ?? 'manual',
+      generationRunId: content?.generationRunId ?? null,
+    };
+  }
+
+  async insertVersion(version: NewVersionRecord, now: Date): Promise<number> {
+    const list = this.versions.get(version.articleId) ?? [];
+    const number = Math.max(0, ...list.map((item) => item.number)) + 1;
+    this.versions.set(version.articleId, [
+      ...list,
+      {
+        number,
+        origin: version.origin,
+        advertisingLabel: version.advertisingLabel,
+        checks: version.checks,
+        createdAt: now,
+        createdBy: this.requirePerson(version.createdBy),
+      },
+    ]);
+    this.versionContent.set(`${version.articleId}:${number}`, {
+      title: version.title,
+      articleMarkdown: version.articleMarkdown,
+      seoTitle: version.seoTitle,
+      tags: [...version.tags],
+      description: version.description,
+      imagePrompt: version.imagePrompt,
+      disclaimerText: version.disclaimerText,
+      claims: version.claims,
+      styleVersion: version.styleVersion,
+      promptVersion: version.promptVersion,
+      generationRunId: version.generationRunId,
+    });
+    const article = this.requireArticle(version.articleId);
+    this.articles.set(version.articleId, {
+      ...article,
+      currentVersionNumber: number,
+      version: article.version + 1,
+      updatedAt: now,
+    });
+    return number;
+  }
+
   async listReviews(articleId: string, limit: number): Promise<ReviewRecord[]> {
     return this.reviews
       .filter((review) => review.articleId === articleId)
@@ -207,6 +289,8 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
         sourceName: fact.sourceName,
         sourceUrl: fact.sourceUrl,
         sourcePublishedAt: fact.sourcePublishedAt,
+        mentionsClient: fact.mentionsClient,
+        clientPermission: fact.clientPermission,
       };
     });
   }

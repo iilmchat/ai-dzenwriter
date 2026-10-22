@@ -142,6 +142,7 @@ const DETAIL = {
   reviews: [],
   publications: [],
   facts: [],
+  checks: [],
   generation: {
     allowed: false,
     reason: 'Не хватает: Одобренные факты: источник новости, 0 из 1',
@@ -375,6 +376,56 @@ describe('приложение', () => {
     const button = await screen.findByRole('button', { name: 'Сгенерировать' });
     expect((button as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Не хватает: Одобренные факты/)).toBeTruthy();
+  });
+
+  it('панель проверок показывает блокирующую проверку и позволяет подтвердить', async () => {
+    const posted: unknown[] = [];
+    const withChecks = {
+      ...DETAIL,
+      currentVersionNumber: 3,
+      checks: [
+        {
+          id: 'numbers_must_map_to_facts',
+          severity: 'block',
+          message: '«42» не найдено в фактах',
+          start: 10,
+          end: 12,
+          excerpt: '42',
+        },
+      ],
+    };
+    stubApi({
+      [`GET /api/v1/articles/${ARTICLE_ID}`]: () => json(withChecks),
+      [`POST /api/v1/articles/${ARTICLE_ID}/versions/3/checks/0/confirm`]: (init) => {
+        posted.push(JSON.parse(String(init?.body)));
+        return json({
+          ...withChecks,
+          checks: [
+            {
+              ...withChecks.checks[0],
+              decision: 'confirmed',
+              comment: 'Это номер пункта правил.',
+            },
+          ],
+        });
+      },
+    });
+
+    renderAt(`/articles/${ARTICLE_ID}`);
+
+    expect(await screen.findByText('«42» не найдено в фактах')).toBeTruthy();
+    expect(screen.getByText('Блокирующих проверок: 1. Материал не пройдёт на ревью')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }));
+    fireEvent.change(await screen.findByLabelText('Почему проверку можно снять'), {
+      target: { value: 'Это номер пункта правил.' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Подтвердить' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Комментарий автора: Это номер пункта правил.')).toBeTruthy(),
+    );
+    expect(posted).toEqual([{ comment: 'Это номер пункта правил.' }]);
   });
 
   it('генерация показывает стадии и вопросы модели', async () => {

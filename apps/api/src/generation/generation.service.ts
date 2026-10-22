@@ -25,6 +25,8 @@ import {
 } from '../articles/articles.repository';
 import { EDITABLE_CONTENT_STATUSES, isInAiFocus } from '../articles/article-rules';
 import { CATALOG_REPOSITORY, type CatalogRepository } from '../catalog/catalog.repository';
+import type { CheckFact } from '../checks/check-context';
+import { ChecksService } from '../checks/checks.service';
 import type { AppConfig } from '../config/app-config';
 import { describeIssues } from '../config/errors';
 import type { LlmConfig } from '../config/llm-config';
@@ -67,6 +69,10 @@ export interface GenerationContext {
   readonly productName: string | null;
   // В модель идут только одобренные факты: черновики и отклонённые остаются в библиотеке.
   readonly facts: readonly PromptFact[];
+  // Все привязанные факты со статусом: их проверяет движок проверок.
+  readonly checkFacts: readonly CheckFact[];
+  // Метки фактов, которые получила модель: на них ссылаются утверждения.
+  readonly factLabels: readonly string[];
   // Метки фактов, которые остались в материале, но в модель не попали.
   readonly skippedFactLabels: readonly string[];
   readonly today: string;
@@ -97,6 +103,7 @@ export class GenerationService {
     @Inject(ARTICLES_REPOSITORY) private readonly articles: ArticlesRepository,
     @Inject(CATALOG_REPOSITORY) private readonly catalog: CatalogRepository,
     @Inject(LLM_PROVIDER) private readonly provider: LlmProvider,
+    @Inject(ChecksService) private readonly checks: ChecksService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(LLM_CONFIG) private readonly llm: LlmConfig,
     @Inject(BASE_PROMPT) private readonly basePrompt: string,
@@ -277,21 +284,42 @@ export class GenerationService {
         return await this.finishFailed(plan, emit, 'invalid_response', usage, startedAt);
       }
 
-      // Движок проверок приходит в E7: пока версия сохраняется без результатов проверок.
-      await emit({ type: 'stage', stage: { stage: 'checks', status: 'running' } });
-      await emit({
-        type: 'stage',
-        stage: {
-          stage: 'checks',
-          status: 'skipped',
-          message: 'Движок проверок появится в E7: версия сохранена без проверок',
-        },
-      });
-
       if (output.status === 'needs_input') {
         const result = await this.finishNeedsInput(plan, emit, output.questions, usage, startedAt);
         return result;
       }
+
+      // Проверки считаются до сохранения версии: блокирующие результаты
+      // должны быть в версии, а не в ответе.
+      await emit({ type: 'stage', stage: { stage: 'checks', status: 'running' } });
+      const checks = this.checks.run({
+        style: plan.context.style,
+        format: plan.context.format,
+        topic: plan.context.article.topic,
+        keywords: plan.context.article.keywords,
+        productName: plan.context.productName,
+        facts: plan.context.checkFacts,
+        title: output.title,
+        seoTitle: output.seo_title,
+        tags: output.tags,
+        articleMarkdown: output.article_markdown,
+        advertisingLabel: output.advertising_label_suggested,
+        disclaimerText: output.disclaimer_needed ? plan.context.style.disclaimer.text : null,
+        claims: output.claims,
+        factLabels: plan.context.factLabels,
+      });
+      const blocking = checks.checks.filter((item) => item.severity === 'block').length;
+      await emit({
+        type: 'stage',
+        stage: {
+          stage: 'checks',
+          status: 'done',
+          message:
+            blocking === 0
+              ? 'Блокирующих проверок нет'
+              : `Блокирующих проверок: ${blocking}. Материал не пройдёт на ревью, пока их не снимут`,
+        },
+      });
 
       const version: NewVersion = {
         articleId: plan.context.article.id,
@@ -304,12 +332,8 @@ export class GenerationService {
         imagePrompt: output.image_prompt,
         advertisingLabel: output.advertising_label_suggested,
         disclaimerText: output.disclaimer_needed ? plan.context.style.disclaimer.text : null,
-        claims: output.claims.map((claim) => ({
-          text: claim.text,
-          type: claim.type,
-          factIds: claim.fact_ids,
-        })),
-        checks: [],
+        claims: checks.claims,
+        checks: checks.checks,
         styleVersion: plan.context.style.version,
         promptVersion: plan.prompt.promptVersion,
         generationRunId: plan.runId,
@@ -442,8 +466,22 @@ export class GenerationService {
 
     const linked = await this.articles.listLinkedFacts(article.id);
     const facts: PromptFact[] = [];
+    const checkFacts: CheckFact[] = [];
+    const factLabels: string[] = [];
     const skippedFactLabels: string[] = [];
     for (const link of linked) {
+      checkFacts.push({
+        label: link.label,
+        id: link.factId,
+        type: link.type,
+        status: link.status,
+        text: link.text,
+        sourceName: link.sourceName,
+        sourceUrl: link.sourceUrl,
+        sourcePublishedAt: link.sourcePublishedAt,
+        mentionsClient: false,
+        clientPermission: false,
+      });
       if (link.status === 'approved') {
         facts.push({
           factId: link.factId,
@@ -454,6 +492,7 @@ export class GenerationService {
           sourceUrl: link.sourceUrl,
           sourcePublishedAt: link.sourcePublishedAt,
         });
+        factLabels.push(link.label);
       } else {
         skippedFactLabels.push(link.label);
       }
@@ -482,6 +521,8 @@ export class GenerationService {
       formatId: article.format,
       productName,
       facts,
+      checkFacts,
+      factLabels,
       skippedFactLabels,
       today: todayInMoscow(new Date()),
     };

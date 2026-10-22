@@ -1,5 +1,7 @@
 export * from './enums';
 export * from './style-config';
+export * from './checks-config';
+export * from './checks';
 export * from './health';
 export * from './problem';
 export * from './auth';

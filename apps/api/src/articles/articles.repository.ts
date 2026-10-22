@@ -7,10 +7,12 @@ import type {
   PublicationStatus,
   ReviewDecision,
   Tone,
+  VersionClaim,
   VersionOrigin,
 } from '@dzenwriter/shared';
 import type { AuditRecord } from '../audit/audit.record';
 import type { FactTotals, VersionCheck } from './article-rules';
+import type { NewVersionRecord } from './version-writer';
 
 export const ARTICLES_REPOSITORY = Symbol('ARTICLES_REPOSITORY');
 
@@ -56,6 +58,21 @@ export interface VersionRecord {
   readonly createdBy: PersonRef;
 }
 
+// Полное содержимое версии: нужно, чтобы подтвердить проверку и создать новую версию.
+export interface VersionContent extends VersionRecord {
+  readonly title: string;
+  readonly articleMarkdown: string;
+  readonly seoTitle: string;
+  readonly tags: readonly string[];
+  readonly description: string;
+  readonly imagePrompt: string;
+  readonly disclaimerText: string | null;
+  readonly claims: readonly VersionClaim[];
+  readonly styleVersion: number;
+  readonly promptVersion: string;
+  readonly generationRunId: string | null;
+}
+
 export interface ReviewRecord {
   readonly decision: ReviewDecision;
   readonly comment: string | null;
@@ -81,6 +98,9 @@ export interface LinkedFactRecord {
   readonly sourceName: string | null;
   readonly sourceUrl: string | null;
   readonly sourcePublishedAt: string | null;
+  // Отметки о клиенте: их проверяет движок проверок перед ревью.
+  readonly mentionsClient: boolean;
+  readonly clientPermission: boolean;
 }
 
 // Подтверждение ревьюера на запуск генерации для темы вне фокуса ИИ.
@@ -160,6 +180,9 @@ export interface ArticlesRepository {
   ): Promise<boolean>;
   latestVersion(articleId: string): Promise<VersionRecord | undefined>;
   listVersions(articleId: string, limit: number): Promise<VersionRecord[]>;
+  findVersion(articleId: string, number: number): Promise<VersionContent | undefined>;
+  // Новая версия материала: текст копируется, а состояние проверок меняется.
+  insertVersion(version: NewVersionRecord, now: Date): Promise<number>;
   listReviews(articleId: string, limit: number): Promise<ReviewRecord[]>;
   listPublications(articleId: string): Promise<PublicationRecord[]>;
   listLinkedFacts(articleId: string): Promise<LinkedFactRecord[]>;

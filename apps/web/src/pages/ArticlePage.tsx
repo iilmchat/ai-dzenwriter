@@ -11,6 +11,7 @@ import { fetchArticle } from '../api/articles';
 import { errorMessage } from '../api/client';
 import { ArticleEditForm } from '../features/article/ArticleEditForm';
 import { ArticleFactsPanel } from '../features/article/ArticleFactsPanel';
+import { ChecksPanel } from '../features/article/ChecksPanel';
 import { GenerationPanel } from '../features/article/GenerationPanel';
 import { TransitionForm } from '../features/article/TransitionForm';
 import { useCatalog } from '../features/catalog/useCatalog';
@@ -125,6 +126,8 @@ export function ArticlePage() {
           onChanged={replace}
         />
       </div>
+
+      <ChecksPanel article={article} canConfirm={isOwnerOrAdmin} onChanged={replace} />
 
       <div className="grid gap-6 lg:grid-cols-2">
         <ReviewsPanel article={article} />

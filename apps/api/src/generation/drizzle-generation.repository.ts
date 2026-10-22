@@ -1,7 +1,8 @@
-import { articleVersions, articles, generationRuns } from '@dzenwriter/db';
+import { articleVersions, generationRuns } from '@dzenwriter/db';
 import type { GenerationStatus } from '@dzenwriter/shared';
 import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { writeAuditRecord, type AuditRecord } from '../audit/audit.record';
+import { insertVersion } from '../articles/version-writer';
 import type { DbHandle } from '../database/db-handle';
 import type {
   GenerationRepository,
@@ -133,57 +134,9 @@ export class DrizzleGenerationRepository implements GenerationRepository {
         return null;
       }
 
-      // Номер версии считаем под блокировкой материала: два запуска не получат один номер.
-      await tx
-        .select({ id: articles.id })
-        .from(articles)
-        .where(eq(articles.id, version.articleId))
-        .for('update');
-      const [counter] = await tx
-        .select({ next: sql<number>`coalesce(max(${articleVersions.number}), 0)::int + 1` })
-        .from(articleVersions)
-        .where(eq(articleVersions.articleId, version.articleId));
-      const number = counter?.next ?? 1;
-
-      await tx.insert(articleVersions).values({
-        articleId: version.articleId,
-        number,
-        origin: version.origin,
-        title: version.title,
-        articleMarkdown: version.articleMarkdown,
-        seoTitle: version.seoTitle,
-        tags: [...version.tags],
-        description: version.description,
-        imagePrompt: version.imagePrompt,
-        advertisingLabel: version.advertisingLabel,
-        disclaimerText: version.disclaimerText,
-        claims: version.claims.map((claim) => ({
-          text: claim.text,
-          type: claim.type,
-          factIds: claim.factIds,
-        })),
-        checks: version.checks.map((check) => ({
-          id: check.id,
-          severity: check.severity,
-          ...(check.message === undefined ? {} : { message: check.message }),
-        })),
-        styleVersion: version.styleVersion,
-        promptVersion: version.promptVersion,
-        generationRunId: version.generationRunId,
-        createdBy: version.createdBy,
-      });
-
-      // Материал изменился: поднимаем версию оптимистичной блокировки.
-      await tx
-        .update(articles)
-        .set({
-          currentVersionNumber: number,
-          version: sql`${articles.version} + 1`,
-          updatedAt: completion.finishedAt,
-        })
-        .where(eq(articles.id, version.articleId));
-
-      return number;
+      // Версия и завершение запуска пишутся одной транзакцией:
+      // версия без завершённого запуска и запуск без версии — поломанное состояние.
+      return insertVersion(tx, version, completion.finishedAt);
     });
   }
 

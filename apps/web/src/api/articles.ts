@@ -93,3 +93,20 @@ export function confirmGeneration(articleId: string): Promise<ArticleDetail> {
     schema: articleDetailSchema,
   });
 }
+
+// Подтверждение проверки автором: снимает блокировку и попадает в аудит.
+export function confirmCheck(
+  articleId: string,
+  versionNumber: number,
+  checkIndex: number,
+  comment: string,
+): Promise<ArticleDetail> {
+  return apiRequest(
+    `/api/v1/articles/${articleId}/versions/${versionNumber}/checks/${checkIndex}/confirm`,
+    {
+      method: 'POST',
+      body: { comment },
+      schema: articleDetailSchema,
+    },
+  );
+}

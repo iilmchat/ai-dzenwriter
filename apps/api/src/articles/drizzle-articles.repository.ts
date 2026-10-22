@@ -16,6 +16,7 @@ import type {
   FactStatus,
   FactType,
   Tone,
+  VersionClaim,
   VersionOrigin,
 } from '@dzenwriter/shared';
 import { and, count, desc, eq, gte, lte, ne, sql, type SQL } from 'drizzle-orm';
@@ -23,6 +24,7 @@ import { alias } from 'drizzle-orm/pg-core';
 import { writeAuditRecord, type AuditRecord } from '../audit/audit.record';
 import type { DbHandle } from '../database/db-handle';
 import { emptyFactTotals, type FactTotals, type VersionCheck } from './article-rules';
+import { insertVersion, type NewVersionRecord } from './version-writer';
 import {
   type ArticleChanges,
   type ArticleFilter,
@@ -35,6 +37,7 @@ import {
   type NewReview,
   type PublicationRecord,
   type ReviewRecord,
+  type VersionContent,
   type VersionRecord,
 } from './articles.repository';
 
@@ -115,6 +118,17 @@ interface VersionSelectRow {
   creatorId: string;
   creatorLogin: string;
   creatorName: string | null;
+  title?: string;
+  articleMarkdown?: string;
+  seoTitle?: string;
+  tags?: string[];
+  description?: string;
+  imagePrompt?: string;
+  disclaimerText?: string | null;
+  claims?: unknown;
+  styleVersion?: number;
+  promptVersion?: string;
+  generationRunId?: string | null;
 }
 
 export class DrizzleArticlesRepository implements ArticlesRepository {
@@ -225,6 +239,50 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
     return (await fetchVersions(this.db, articleId, limit)).map(toVersionRecord);
   }
 
+  async findVersion(articleId: string, number: number): Promise<VersionContent | undefined> {
+    const rows = await this.db
+      .select({
+        ...versionSelection,
+        title: articleVersions.title,
+        articleMarkdown: articleVersions.articleMarkdown,
+        seoTitle: articleVersions.seoTitle,
+        tags: articleVersions.tags,
+        description: articleVersions.description,
+        imagePrompt: articleVersions.imagePrompt,
+        disclaimerText: articleVersions.disclaimerText,
+        claims: articleVersions.claims,
+        styleVersion: articleVersions.styleVersion,
+        promptVersion: articleVersions.promptVersion,
+        generationRunId: articleVersions.generationRunId,
+      })
+      .from(articleVersions)
+      .innerJoin(authorUser, eq(authorUser.id, articleVersions.createdBy))
+      .where(and(eq(articleVersions.articleId, articleId), eq(articleVersions.number, number)))
+      .limit(1);
+    const [row] = rows;
+    if (!row) {
+      return undefined;
+    }
+    return {
+      ...toVersionRecord(row),
+      title: row.title,
+      articleMarkdown: row.articleMarkdown,
+      seoTitle: row.seoTitle,
+      tags: row.tags,
+      description: row.description,
+      imagePrompt: row.imagePrompt,
+      disclaimerText: row.disclaimerText,
+      claims: parseClaims(row.claims),
+      styleVersion: row.styleVersion,
+      promptVersion: row.promptVersion,
+      generationRunId: row.generationRunId,
+    };
+  }
+
+  async insertVersion(version: NewVersionRecord, now: Date): Promise<number> {
+    return insertVersion(this.db, version, now);
+  }
+
   async listReviews(articleId: string, limit: number): Promise<ReviewRecord[]> {
     const rows = await this.db
       .select({
@@ -282,6 +340,8 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
         sourceName: facts.sourceName,
         sourceUrl: facts.sourceUrl,
         sourcePublishedAt: facts.sourcePublishedAt,
+        mentionsClient: facts.mentionsClient,
+        clientPermission: facts.clientPermission,
       })
       .from(articleFacts)
       .innerJoin(facts, eq(facts.id, articleFacts.factId))
@@ -296,6 +356,8 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
         sourceName: row.sourceName,
         sourceUrl: row.sourceUrl,
         sourcePublishedAt: row.sourcePublishedAt,
+        mentionsClient: row.mentionsClient,
+        clientPermission: row.clientPermission,
       }))
       .sort((left, right) => labelNumber(left.label) - labelNumber(right.label));
   }
@@ -498,11 +560,60 @@ function parseChecks(raw: unknown): VersionCheck[] {
     if (typeof item !== 'object' || item === null) {
       return [];
     }
-    const { id, severity, message } = item as Record<string, unknown>;
-    if (typeof id !== 'string' || !isSeverity(severity)) {
+    const record = item as Record<string, unknown>;
+    const { id, severity, message, start, end, excerpt, decision, comment, confirmedBy } = record;
+    if (
+      typeof id !== 'string' ||
+      !isSeverity(severity) ||
+      typeof message !== 'string' ||
+      (decision !== undefined && decision !== 'confirmed')
+    ) {
       return [];
     }
-    return [{ id, severity, ...(typeof message === 'string' ? { message } : {}) }];
+    return [
+      {
+        id,
+        severity,
+        message,
+        ...(typeof start === 'number' ? { start } : {}),
+        ...(typeof end === 'number' ? { end } : {}),
+        ...(typeof excerpt === 'string' ? { excerpt } : {}),
+        ...(decision === 'confirmed' ? { decision } : {}),
+        ...(typeof comment === 'string' ? { comment } : {}),
+        ...(typeof confirmedBy === 'string' ? { confirmedBy } : {}),
+        ...(typeof record.confirmedAt === 'string' ? { confirmedAt: record.confirmedAt } : {}),
+      },
+    ];
+  });
+}
+
+// claims в БД — jsonb: битые записи не должны ронять чтение.
+function parseClaims(raw: unknown): VersionClaim[] {
+  if (!Array.isArray(raw)) {
+    return [];
+  }
+  return raw.flatMap((item: unknown): VersionClaim[] => {
+    if (typeof item !== 'object' || item === null) {
+      return [];
+    }
+    const record = item as Record<string, unknown>;
+    const { text, type, factIds, start, end } = record;
+    if (
+      typeof text !== 'string' ||
+      (type !== 'fact' && type !== 'hypothesis' && type !== 'opinion') ||
+      !Array.isArray(factIds)
+    ) {
+      return [];
+    }
+    return [
+      {
+        text,
+        type,
+        factIds: factIds.filter((id): id is string => typeof id === 'string'),
+        ...(typeof start === 'number' ? { start } : {}),
+        ...(typeof end === 'number' ? { end } : {}),
+      },
+    ];
   });
 }
 

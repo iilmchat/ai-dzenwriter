@@ -59,6 +59,122 @@ async function createArticle(
   return response.article;
 }
 
+describe('подтверждение проверок', () => {
+  const BLOCKING = {
+    id: 'numbers_must_map_to_facts',
+    severity: 'block' as const,
+    message: 'Число 42 не найдено в фактах',
+    start: 10,
+    end: 12,
+    excerpt: '42',
+  };
+
+  async function articleWithVersion(harness: Harness) {
+    const article = await createArticle(harness);
+    await harness.repo.insertVersion(
+      {
+        articleId: article.id,
+        origin: 'generated',
+        title: 'Заголовок',
+        articleMarkdown: 'В тексте есть число 42.',
+        seoTitle: 'SEO',
+        tags: ['ии'],
+        description: 'Описание',
+        imagePrompt: 'Обложка',
+        advertisingLabel: false,
+        disclaimerText: null,
+        claims: [],
+        checks: [BLOCKING],
+        styleVersion: 1,
+        promptVersion: 'sha256:test',
+        generationRunId: null,
+        createdBy: harness.actors.owner.id,
+      },
+      NOW,
+    );
+    return article;
+  }
+
+  it('автор подтверждает проверку с комментарием: появляется новая версия', async () => {
+    const harness = setup();
+    const article = await articleWithVersion(harness);
+
+    const detail = await harness.service.confirmCheck(
+      harness.actors.owner,
+      article.id,
+      1,
+      0,
+      'Число 42 — это номер пункта правил, а не данные.',
+      NOW,
+    );
+
+    expect(detail.checks).toHaveLength(1);
+    expect(detail.checks[0]).toMatchObject({
+      id: 'numbers_must_map_to_facts',
+      decision: 'confirmed',
+      comment: 'Число 42 — это номер пункта правил, а не данные.',
+      confirmedBy: harness.actors.owner.id,
+    });
+    expect(detail.versions[0]).toMatchObject({ number: 2, blockingChecks: 0 });
+    expect(harness.repo.audit.at(-1)).toMatchObject({ action: 'check.confirm' });
+  });
+
+  it('подтверждённая проверка больше не блокирует переход на ревью', async () => {
+    const harness = setup();
+    const article = await articleWithVersion(harness);
+    harness.repo.setStatus(article.id, 'drafting');
+
+    await expect(
+      harness.service.transition(
+        harness.actors.owner,
+        article.id,
+        { to: 'in_review', expectedVersion: harness.repo.article(article.id)?.version ?? 0 },
+        NOW,
+      ),
+    ).rejects.toThrow(/блокирующих проверок/);
+
+    await harness.service.confirmCheck(
+      harness.actors.owner,
+      article.id,
+      1,
+      0,
+      'Число 42 — это номер пункта правил.',
+      NOW,
+    );
+
+    const after = await harness.service.transition(
+      harness.actors.owner,
+      article.id,
+      { to: 'in_review', expectedVersion: harness.repo.article(article.id)?.version ?? 0 },
+      NOW,
+    );
+    expect(after.status).toBe('in_review');
+  });
+
+  it('чужой пользователь не подтверждает проверку', async () => {
+    const harness = setup();
+    const article = await articleWithVersion(harness);
+
+    await expect(
+      harness.service.confirmCheck(harness.actors.stranger, article.id, 1, 0, 'Причина', NOW),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('несуществующая проверка и повторное подтверждение отклоняются', async () => {
+    const harness = setup();
+    const article = await articleWithVersion(harness);
+
+    await expect(
+      harness.service.confirmCheck(harness.actors.owner, article.id, 1, 5, 'Причина', NOW),
+    ).rejects.toBeInstanceOf(NotFoundException);
+
+    await harness.service.confirmCheck(harness.actors.owner, article.id, 1, 0, 'Причина', NOW);
+    await expect(
+      harness.service.confirmCheck(harness.actors.owner, article.id, 2, 0, 'Причина', NOW),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
 describe('подтверждение запуска генерации', () => {
   it('автор не подтверждает запуск своего материала', async () => {
     const harness = setup();
@@ -290,7 +406,9 @@ describe('переходы статусов', () => {
     ).rejects.toThrow(/Нет версии текста/);
 
     harness.repo.addVersion(article.id, {
-      checks: [{ id: 'numbers_must_map_to_facts', severity: 'block' }],
+      checks: [
+        { id: 'numbers_must_map_to_facts', severity: 'block', message: 'Число 42 не в фактах' },
+      ],
     });
     await expect(
       harness.service.transition(harness.actors.owner, article.id, input, NOW),

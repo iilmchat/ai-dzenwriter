@@ -1,7 +1,7 @@
 import {
   CONTENT_EDITABLE_STATUSES,
+  countBlockingChecks,
   type ArticleStatus,
-  type CheckSeverity,
   type FactStatus,
   type FactType,
   ARTICLE_STATUS_LABELS,
@@ -12,6 +12,7 @@ import {
   type StyleConfig,
   type TransitionOption,
   type UserRole,
+  type VersionCheck,
 } from '@dzenwriter/shared';
 
 export const STATUS_LABELS = ARTICLE_STATUS_LABELS;
@@ -104,11 +105,7 @@ export function permissionProblem(
   return 'Отметить публикацию может автор или ревьюер';
 }
 
-export interface VersionCheck {
-  readonly id: string;
-  readonly severity: CheckSeverity;
-  readonly message?: string;
-}
+export type { VersionCheck };
 
 export interface VersionInfo {
   readonly number: number;
@@ -229,9 +226,7 @@ function unapprovedLinkProblems(links: readonly FactLinkStatus[]): string[] {
   return [`Привязанные факты не одобрены: ${list}`];
 }
 
-export function countBlockingChecks(checks: readonly VersionCheck[]): number {
-  return checks.filter((check) => check.severity === 'block').length;
-}
+export { countBlockingChecks } from '@dzenwriter/shared';
 
 export function describeTransition(
   rule: TransitionRule,
