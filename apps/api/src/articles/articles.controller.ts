@@ -90,6 +90,16 @@ export class ArticlesController {
     return this.articles.attachFact(actor, id, body.factId);
   }
 
+  // Подтверждение ревьюера на запуск генерации для темы вне фокуса ИИ.
+  @Post(':id/generation-confirmation')
+  @HttpCode(HttpStatus.OK)
+  confirmGeneration(
+    @Param('id', articleIdPipe()) id: string,
+    @AuthUser() actor: SessionUser,
+  ): Promise<ArticleDetail> {
+    return this.articles.confirmGeneration(actor, id);
+  }
+
   @Delete(':id/facts/:factId')
   detachFact(
     @Param('id', articleIdPipe()) id: string,

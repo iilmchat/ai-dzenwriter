@@ -19,5 +19,6 @@ import { ARTICLES_REPOSITORY } from './articles.repository';
       useFactory: (database: DatabaseService) => new DrizzleArticlesRepository(database.db),
     },
   ],
+  exports: [ARTICLES_REPOSITORY],
 })
 export class ArticlesModule {}

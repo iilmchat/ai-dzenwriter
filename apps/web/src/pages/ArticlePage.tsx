@@ -11,6 +11,7 @@ import { fetchArticle } from '../api/articles';
 import { errorMessage } from '../api/client';
 import { ArticleEditForm } from '../features/article/ArticleEditForm';
 import { ArticleFactsPanel } from '../features/article/ArticleFactsPanel';
+import { GenerationPanel } from '../features/article/GenerationPanel';
 import { TransitionForm } from '../features/article/TransitionForm';
 import { useCatalog } from '../features/catalog/useCatalog';
 import { formatDate, formatDateTime } from '../lib/format';
@@ -71,6 +72,11 @@ export function ArticlePage() {
     user !== undefined && (user.id === article.owner.id || user.role === 'admin');
   const canEdit = isOwnerOrAdmin && article.status !== 'archived' && article.status !== 'published';
   const canChangeFacts = isOwnerOrAdmin && CONTENT_EDITABLE_STATUSES.includes(article.status);
+  // Подтверждение вне фокуса ИИ даёт ревьюер, и только если он не автор материала.
+  const canConfirmGeneration =
+    user !== undefined &&
+    (user.role === 'reviewer' || user.role === 'admin') &&
+    (user.id !== article.owner.id || user.role === 'admin');
   const style = catalog.styles.find((item) => item.id === article.styleId);
   const replace = (next: ArticleDetail) => setState({ phase: 'ready', article: next });
 
@@ -100,6 +106,13 @@ export function ArticlePage() {
         <RequirementsPanel article={article} />
         <TransitionForm article={article} onDone={replace} />
       </div>
+
+      <GenerationPanel
+        article={article}
+        canRun={isOwnerOrAdmin}
+        canConfirm={canConfirmGeneration}
+        onChanged={replace}
+      />
 
       {canEdit ? <ArticleEditForm article={article} onSaved={replace} /> : null}
 

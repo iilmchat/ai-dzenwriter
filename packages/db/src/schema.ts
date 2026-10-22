@@ -210,6 +210,8 @@ export const generationRuns = pgTable(
     latencyMs: integer('latency_ms'),
     costUsd: numeric('cost_usd', { precision: 10, scale: 4 }),
     errorCode: text('error_code'),
+    // Вопросы автору из ответа needs_input: версия при этом не создаётся, вопросы живут здесь.
+    questions: jsonb('questions').notNull().default([]),
     idempotencyKey: text('idempotency_key').unique(),
     createdBy: uuid('created_by')
       .notNull()
@@ -220,6 +222,26 @@ export const generationRuns = pgTable(
   (table) => [
     check('generation_runs_status_check', oneOf(table.status.name, GENERATION_STATUSES)),
     index('generation_runs_article_created_at_idx').on(table.articleId, table.createdAt),
+  ],
+);
+
+// Подтверждение ревьюера на запуск генерации для темы вне фокуса ИИ.
+// Одно подтверждение на материал: тема не меняет фокус, а подтверждение не переиспользуется.
+export const articleGenerationConfirmations = pgTable(
+  'article_generation_confirmations',
+  {
+    id: uuidId(),
+    articleId: uuid('article_id')
+      .notNull()
+      .references(() => articles.id, { onDelete: 'cascade' }),
+    confirmedBy: uuid('confirmed_by')
+      .notNull()
+      .references(() => users.id),
+    confirmedAt: timestampTz('confirmed_at').notNull().defaultNow(),
+  },
+  (table) => [
+    unique('article_generation_confirmations_article_unique').on(table.articleId),
+    index('article_generation_confirmations_article_idx').on(table.articleId),
   ],
 );
 

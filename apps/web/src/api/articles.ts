@@ -85,3 +85,11 @@ export function detachFact(articleId: string, factId: string): Promise<ArticleDe
     schema: articleDetailSchema,
   });
 }
+
+// Подтверждение ревьюера на запуск генерации для темы вне фокуса ИИ.
+export function confirmGeneration(articleId: string): Promise<ArticleDetail> {
+  return apiRequest(`/api/v1/articles/${articleId}/generation-confirmation`, {
+    method: 'POST',
+    schema: articleDetailSchema,
+  });
+}

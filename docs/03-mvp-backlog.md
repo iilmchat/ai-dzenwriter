@@ -1,6 +1,6 @@
 # MVP backlog — DzenWriter
 
-**Статус:** E1–E5 выполнены, см. [04-implementation-status](04-implementation-status.md). E6–E11 к выполнению, см. [00-design](00-design.md). US-3.4 (счётчик блокирующих проверок на карточке) откладывается до E7  
+**Статус:** E1–E6 выполнены, см. [04-implementation-status](04-implementation-status.md). E7–E11 к выполнению, см. [00-design](00-design.md). US-3.4 (счётчик блокирующих проверок на карточке) откладывается до E7  
 **Дата:** 22.10.2026  
 **Срок:** 6–8 недель для двух разработчиков (оценка, см. 00-design, раздел 16)  
 **Связанные документы:** [00-design](00-design.md), [01-writing-styles](01-writing-styles.md), [02-data-model](02-data-model.md), [06-legal-and-safety](06-legal-and-safety.md)

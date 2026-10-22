@@ -83,6 +83,12 @@ export interface LinkedFactRecord {
   readonly sourcePublishedAt: string | null;
 }
 
+// Подтверждение ревьюера на запуск генерации для темы вне фокуса ИИ.
+export interface GenerationConfirmationRecord {
+  readonly confirmedBy: PersonRef;
+  readonly confirmedAt: Date;
+}
+
 export interface ArticleFilter {
   readonly status?: ArticleStatus | undefined;
   readonly styleId?: string | undefined;
@@ -161,6 +167,8 @@ export interface ArticlesRepository {
   attachFact(articleId: string, factId: string, addedBy: string): Promise<string | undefined>;
   detachFact(articleId: string, factId: string): Promise<boolean>;
   approvedFactTotals(articleId: string): Promise<FactTotals>;
+  findGenerationConfirmation(articleId: string): Promise<GenerationConfirmationRecord | undefined>;
+  insertGenerationConfirmation(articleId: string, confirmedBy: string): Promise<void>;
   insertReview(review: NewReview): Promise<void>;
   insertPublication(publication: NewPublication): Promise<void>;
   insertAudit(record: AuditRecord): Promise<void>;

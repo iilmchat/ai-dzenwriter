@@ -59,6 +59,56 @@ async function createArticle(
   return response.article;
 }
 
+describe('подтверждение запуска генерации', () => {
+  it('автор не подтверждает запуск своего материала', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    await expect(
+      harness.service.confirmGeneration(harness.actors.owner, article.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('тема вне фокуса ИИ требует подтверждения, ревьюер подтверждает', async () => {
+    const harness = setup();
+    const article = await createArticle(harness, { topic: 'Рецепт борща', keywords: ['суп'] });
+
+    expect(article.generation.outOfFocus).toBe(true);
+    expect(article.generation.confirmed).toBe(false);
+    expect(article.generation.reason).toContain('подтверждения ревьюера');
+
+    const confirmed = await harness.service.confirmGeneration(harness.actors.reviewer, article.id);
+
+    expect(confirmed.generation.confirmed).toBe(true);
+    expect(confirmed.generation.reason).not.toContain('подтверждения ревьюера');
+    expect(harness.repo.audit.at(-1)).toMatchObject({ action: 'article.generation_confirm' });
+  });
+
+  it('повторное подтверждение не пишет вторую запись в аудит', async () => {
+    const harness = setup();
+    const article = await createArticle(harness, { topic: 'Рецепт борща', keywords: ['суп'] });
+
+    await harness.service.confirmGeneration(harness.actors.reviewer, article.id);
+    const auditsAfterFirst = harness.repo.audit.filter(
+      (record) => record.action === 'article.generation_confirm',
+    ).length;
+    await harness.service.confirmGeneration(harness.actors.reviewer, article.id);
+    const auditsAfterSecond = harness.repo.audit.filter(
+      (record) => record.action === 'article.generation_confirm',
+    ).length;
+
+    expect(auditsAfterFirst).toBe(1);
+    expect(auditsAfterSecond).toBe(1);
+  });
+
+  it('тема в фокусе ИИ подтверждения не требует', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    expect(article.generation.outOfFocus).toBe(false);
+  });
+});
+
 describe('создание материала', () => {
   it('начинается в статусе «Идея» с объёмом формата и тоном стиля', async () => {
     const harness = setup();

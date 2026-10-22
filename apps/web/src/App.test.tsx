@@ -142,6 +142,12 @@ const DETAIL = {
   reviews: [],
   publications: [],
   facts: [],
+  generation: {
+    allowed: false,
+    reason: 'Не хватает: Одобренные факты: источник новости, 0 из 1',
+    outOfFocus: false,
+    confirmed: false,
+  },
 };
 
 function json(body: unknown, status = 200): Response {
@@ -149,6 +155,14 @@ function json(body: unknown, status = 200): Response {
     status,
     headers: { 'Content-Type': 'application/json' },
   });
+}
+
+// Поток SSE для проверки панели генерации.
+function sse(events: readonly { readonly event: string; readonly data: unknown }[]): Response {
+  const body = events
+    .map((item) => `event: ${item.event}\ndata: ${JSON.stringify(item.data)}\n\n`)
+    .join('');
+  return new Response(body, { status: 200, headers: { 'Content-Type': 'text/event-stream' } });
 }
 
 type Handler = (init?: RequestInit) => Response | Promise<Response>;
@@ -164,6 +178,7 @@ function stubApi(overrides: Record<string, Handler> = {}, me: unknown = ADMIN) {
     'GET /api/v1/facts': () => json({ items: [], truncated: false }),
     'GET /api/v1/articles': () => json({ items: [ITEM], truncated: false }),
     [`GET /api/v1/articles/${ARTICLE_ID}`]: () => json(DETAIL),
+    [`GET /api/v1/articles/${ARTICLE_ID}/generations`]: () => json({ items: [] }),
     ...overrides,
   };
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
@@ -350,5 +365,63 @@ describe('приложение', () => {
 
     expect(await screen.findByText('F1 · Источник новости · Одобрен')).toBeTruthy();
     expect(posted).toEqual([{ factId: FACT_ID }]);
+  });
+
+  it('панель генерации показывает причину, когда фактов не хватает', async () => {
+    stubApi();
+
+    renderAt(`/articles/${ARTICLE_ID}`);
+
+    const button = await screen.findByRole('button', { name: 'Сгенерировать' });
+    expect((button as HTMLButtonElement).disabled).toBe(true);
+    expect(screen.getByText(/Не хватает: Одобренные факты/)).toBeTruthy();
+  });
+
+  it('генерация показывает стадии и вопросы модели', async () => {
+    stubApi({
+      [`GET /api/v1/articles/${ARTICLE_ID}`]: () =>
+        json({
+          ...DETAIL,
+          generation: { allowed: true, reason: null, outOfFocus: false, confirmed: false },
+        }),
+      [`POST /api/v1/articles/${ARTICLE_ID}/generations`]: () =>
+        sse([
+          {
+            event: 'stage',
+            data: { type: 'stage', stage: { stage: 'generate', status: 'running' } },
+          },
+          {
+            event: 'stage',
+            data: {
+              type: 'stage',
+              stage: { stage: 'parse', status: 'done', message: 'Ответ соответствует схеме' },
+            },
+          },
+          {
+            event: 'result',
+            data: {
+              type: 'result',
+              result: {
+                runId: '00000000-0000-4000-8000-0000000000b1',
+                status: 'needs_input',
+                versionNumber: null,
+                inputTokens: 10,
+                outputTokens: 20,
+                latencyMs: 100,
+                questions: ['Какой результат вы получили?'],
+                errorCode: null,
+              },
+            },
+          },
+        ]),
+    });
+
+    renderAt(`/articles/${ARTICLE_ID}`);
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Сгенерировать' }));
+
+    expect(await screen.findByText('Какой результат вы получили?')).toBeTruthy();
+    expect(screen.getByText('Сборка промпта')).toBeTruthy();
+    expect(screen.getByText('Разбор ответа')).toBeTruthy();
   });
 });

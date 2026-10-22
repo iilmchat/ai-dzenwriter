@@ -1,5 +1,6 @@
 import {
   articleFacts,
+  articleGenerationConfirmations,
   articles,
   articleVersions,
   auditLog,
@@ -27,6 +28,7 @@ import {
   type ArticleFilter,
   type ArticlesRepository,
   type ArticleView,
+  type GenerationConfirmationRecord,
   type LinkedFactRecord,
   type NewArticle,
   type NewPublication,
@@ -39,6 +41,7 @@ import {
 const ownerUser = alias(users, 'owner');
 const reviewerUser = alias(users, 'reviewer');
 const authorUser = alias(users, 'author');
+const confirmUser = alias(users, 'confirm');
 
 const articleSelection = {
   id: articles.id,
@@ -368,6 +371,41 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
       totals[row.type as FactType] = { count: row.total, chars: Number(row.chars) };
     }
     return totals;
+  }
+
+  async findGenerationConfirmation(
+    articleId: string,
+  ): Promise<GenerationConfirmationRecord | undefined> {
+    const rows = await this.db
+      .select({
+        confirmedBy: confirmUser.id,
+        confirmedByLogin: confirmUser.login,
+        confirmedByName: confirmUser.name,
+        confirmedAt: articleGenerationConfirmations.confirmedAt,
+      })
+      .from(articleGenerationConfirmations)
+      .innerJoin(confirmUser, eq(confirmUser.id, articleGenerationConfirmations.confirmedBy))
+      .where(eq(articleGenerationConfirmations.articleId, articleId))
+      .limit(1);
+    const [row] = rows;
+    if (!row) {
+      return undefined;
+    }
+    return {
+      confirmedBy: {
+        id: row.confirmedBy,
+        login: row.confirmedByLogin,
+        name: row.confirmedByName,
+      },
+      confirmedAt: row.confirmedAt,
+    };
+  }
+
+  async insertGenerationConfirmation(articleId: string, confirmedBy: string): Promise<void> {
+    await this.db
+      .insert(articleGenerationConfirmations)
+      .values({ articleId, confirmedBy })
+      .onConflictDoNothing();
   }
 
   async insertReview(review: NewReview): Promise<void> {

@@ -16,6 +16,7 @@ import {
   type ArticleListResponse,
   type CreateArticleInput,
   type CreateArticleResponse,
+  type GenerationAvailability,
   type StyleConfig,
   type TransitionInput,
   type UpdateArticleInput,
@@ -360,11 +361,12 @@ export class ArticlesService {
   private async detail(actor: Actor, id: string): Promise<ArticleDetail> {
     const view = await this.requireView(id);
     const context = await this.gateContext(view);
-    const [versions, reviews, publications, facts] = await Promise.all([
+    const [versions, reviews, publications, facts, confirmation] = await Promise.all([
       this.repository.listVersions(id, VERSIONS_SHOWN),
       this.repository.listReviews(id, VERSIONS_SHOWN),
       this.repository.listPublications(id),
       this.repository.listLinkedFacts(id),
+      this.repository.findGenerationConfirmation(id),
     ]);
     return {
       ...toArticleItem(view, this.styleName(view.styleId)),
@@ -378,9 +380,75 @@ export class ArticlesService {
       reviews: reviews.map(toReviewSummary),
       publications: publications.map(toPublicationSummary),
       facts: facts.map(toFactLink),
+      generation: this.generationAvailability(actor, view, context, confirmation !== undefined),
     };
   }
 
+  // Доступность запуска генерации и причина, по которой она недоступна.
+  // Правила считает сервер: интерфейс показывает кнопки по этому ответу.
+  private generationAvailability(
+    actor: Actor,
+    view: ArticleView,
+    context: GateContext,
+    confirmed: boolean,
+  ): GenerationAvailability {
+    const outOfFocus = !isInAiFocus(view.topic, view.keywords);
+    const reasons: string[] = [];
+
+    if (actor.id !== view.ownerId && actor.role !== 'admin') {
+      reasons.push('Запустить генерацию может автор материала или администратор');
+    }
+    if (!EDITABLE_CONTENT_STATUSES.has(view.status)) {
+      reasons.push('Генерация доступна до утверждения: сначала верните материал в черновик');
+    }
+    if (context.style === undefined) {
+      reasons.push('Стиль материала не найден в конфигурации');
+    } else {
+      for (const item of inputRequirements(context.style, context.totals, view.productId)) {
+        if (!item.met) {
+          reasons.push(`Не хватает: ${item.title}, ${item.actual} из ${item.required}`);
+        }
+      }
+    }
+    if (outOfFocus && !confirmed) {
+      reasons.push('Тема вне фокуса ИИ: запуск требует подтверждения ревьюера');
+    }
+
+    return {
+      allowed: reasons.length === 0,
+      reason: reasons.length > 0 ? reasons.join('; ') : null,
+      outOfFocus,
+      confirmed,
+    };
+  }
+
+  // Подтверждение ревьюера на запуск генерации для темы вне фокуса ИИ.
+  async confirmGeneration(actor: Actor, id: string): Promise<ArticleDetail> {
+    const view = await this.requireView(id);
+    if (actor.role !== 'reviewer' && actor.role !== 'admin') {
+      throw new ForbiddenException('Подтвердить запуск генерации может ревьюер или администратор');
+    }
+    if (actor.id === view.ownerId && actor.role !== 'admin') {
+      throw new ForbiddenException(
+        'Подтвердить запуск не может автор материала: это делает ревьюер',
+      );
+    }
+    // Повторное подтверждение ничего не меняет, поэтому в аудит не пишем.
+    const existing = await this.repository.findGenerationConfirmation(id);
+    if (!existing) {
+      await this.repository.withTransaction(async (tx) => {
+        await tx.insertGenerationConfirmation(id, actor.id);
+        await tx.insertAudit({
+          actorId: actor.id,
+          action: 'article.generation_confirm',
+          entityType: 'article',
+          entityId: id,
+          payload: {},
+        });
+      });
+    }
+    return this.detail(actor, id);
+  }
   private async gateContext(view: ArticleView): Promise<GateContext> {
     const [totals, latest, links] = await Promise.all([
       this.repository.approvedFactTotals(view.id),

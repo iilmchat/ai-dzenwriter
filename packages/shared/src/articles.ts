@@ -13,6 +13,7 @@ import {
   TONES,
   VERSION_ORIGINS,
 } from './enums';
+import { generationAvailabilitySchema } from './generation';
 
 // Текст, параметры и факты меняются только до утверждения. Дальше материал возвращают в черновик.
 export const CONTENT_EDITABLE_STATUSES: readonly ArticleStatus[] = [
@@ -217,6 +218,8 @@ export const articleDetailSchema = articleItemSchema.extend({
   reviews: z.array(reviewSummarySchema),
   publications: z.array(publicationSummarySchema),
   facts: z.array(factLinkSchema),
+  // Доступность запуска генерации с причиной. Правила считает сервер.
+  generation: generationAvailabilitySchema,
 });
 export type ArticleDetail = z.infer<typeof articleDetailSchema>;
 

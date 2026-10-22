@@ -25,6 +25,7 @@ ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build --chown=node:node /out/api ./
 COPY --from=build --chown=node:node /app/config ./config
+COPY --from=build --chown=node:node /app/prompts ./prompts
 USER node
 EXPOSE 4000
 CMD ["node", "dist/main.js"]

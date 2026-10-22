@@ -8,6 +8,7 @@ import type {
   ArticleRecord,
   ArticlesRepository,
   ArticleView,
+  GenerationConfirmationRecord,
   LinkedFactRecord,
   NewArticle,
   NewPublication,
@@ -22,6 +23,7 @@ import type { InMemoryFactsRepository } from './in-memory-facts.repository';
 interface FactLink {
   readonly factId: string;
   readonly label: string;
+  readonly addedBy: string;
 }
 
 // Репозиторий статей в памяти: та же семантика версий и фильтров, что в DrizzleArticlesRepository.
@@ -35,6 +37,10 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
   readonly links = new Map<string, FactLink[]>();
   readonly labelHistory = new Map<string, number>();
   readonly totals = new Map<string, FactTotals>();
+  readonly confirmations = new Map<
+    string,
+    { readonly confirmedBy: string; readonly confirmedAt: Date }
+  >();
   readonly audit: AuditRecord[] = [];
   readonly clock = new Date('2026-10-22T10:00:00Z');
 
@@ -205,7 +211,11 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
     });
   }
 
-  async attachFact(articleId: string, factId: string): Promise<string | undefined> {
+  async attachFact(
+    articleId: string,
+    factId: string,
+    addedBy: string,
+  ): Promise<string | undefined> {
     const list = this.links.get(articleId) ?? [];
     if (list.some((link) => link.factId === factId)) {
       return undefined;
@@ -216,7 +226,7 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
     );
     this.labelHistory.set(articleId, highest + 1);
     const label = `F${highest + 1}`;
-    this.links.set(articleId, [...list, { factId, label }]);
+    this.links.set(articleId, [...list, { factId, label, addedBy }]);
     return label;
   }
 
@@ -232,6 +242,25 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
 
   async approvedFactTotals(articleId: string): Promise<FactTotals> {
     return this.totals.get(articleId) ?? emptyFactTotals();
+  }
+
+  async findGenerationConfirmation(
+    articleId: string,
+  ): Promise<GenerationConfirmationRecord | undefined> {
+    const confirmation = this.confirmations.get(articleId);
+    if (!confirmation) {
+      return undefined;
+    }
+    return {
+      confirmedBy: this.requirePerson(confirmation.confirmedBy),
+      confirmedAt: confirmation.confirmedAt,
+    };
+  }
+
+  async insertGenerationConfirmation(articleId: string, confirmedBy: string): Promise<void> {
+    if (!this.confirmations.has(articleId)) {
+      this.confirmations.set(articleId, { confirmedBy, confirmedAt: this.clock });
+    }
   }
 
   async insertReview(review: NewReview): Promise<void> {
