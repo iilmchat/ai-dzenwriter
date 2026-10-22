@@ -1,0 +1,496 @@
+<!doctype html>
+<html lang="ru" data-theme="light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>DzenWriter — прототип</title>
+  <link rel="icon" type="image/svg+xml" href="../design/brand/logo-icon.svg">
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Manrope:wght@700&display=swap">
+  <link rel="stylesheet" href="../design/brand/fonts.css">
+  <link rel="stylesheet" href="../design/brand/theme-m3.css">
+  <style>
+    :root {
+      --dz-ok-container: #D1FAE5;
+      --dz-on-ok-container: #064E3B;
+      --dz-warn-container: #FFF1D6;
+      --dz-on-warn-container: #5C3600;
+    }
+    [data-theme="dark"] {
+      --dz-ok-container: #064E3B;
+      --dz-on-ok-container: #D1FAE5;
+      --dz-warn-container: #5C3600;
+      --dz-on-warn-container: #FFF1D6;
+    }
+    * { box-sizing: border-box; }
+    [hidden] { display: none !important; }
+    body {
+      margin: 0;
+      font-family: Inter, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+      font-size: 14px;
+      line-height: 20px;
+      background: var(--md-sys-color-surface);
+      color: var(--md-sys-color-on-surface);
+    }
+    h1, h2, h3 { margin: 0; font-family: Manrope, Inter, system-ui, sans-serif; font-weight: 700; }
+    h1 { font-size: 24px; line-height: 32px; }
+    h2 { font-size: 16px; line-height: 24px; }
+    h3 { font-size: 14px; line-height: 20px; }
+    p { margin: 0; }
+    button, input, textarea { font: inherit; color: inherit; }
+    :focus-visible { outline: 2px solid var(--md-sys-color-primary); outline-offset: 2px; }
+    a { color: var(--md-sys-color-tertiary); }
+
+    .app { display: grid; grid-template-columns: 232px 1fr; min-height: 100vh; }
+    .side {
+      display: flex; flex-direction: column; gap: 4px; padding: 16px 12px;
+      background: var(--md-sys-color-surface-container-low);
+      border-right: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 4px 8px 16px; font-size: 16px; font-weight: 700; }
+    .brand img { width: 24px; height: 24px; }
+    [data-theme="dark"] .brand img { filter: invert(1); }
+    .nav a {
+      display: block; padding: 8px 12px; border-radius: 999px; font-weight: 500; text-decoration: none;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .nav a:hover { background: var(--md-sys-color-surface-container-high); }
+    .nav a[aria-current="page"] {
+      background: var(--md-sys-color-secondary-container);
+      color: var(--md-sys-color-on-secondary-container);
+      font-weight: 600;
+    }
+    .side-foot { margin-top: auto; padding: 12px 12px 0; font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+
+    .main { display: flex; flex-direction: column; min-width: 0; }
+    .top {
+      display: flex; align-items: center; gap: 12px; height: 56px; padding: 0 24px;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    }
+    .search { flex: 1; max-width: 480px; }
+    .search input {
+      width: 100%; height: 36px; padding: 0 14px; border-radius: 999px;
+      border: 1px solid var(--md-sys-color-outline); background: var(--md-sys-color-surface-container-low);
+    }
+    .spacer { flex: 1; }
+    .btn {
+      display: inline-flex; align-items: center; justify-content: center; gap: 8px; height: 36px;
+      padding: 0 16px; border: 1px solid transparent; border-radius: 999px; background: transparent;
+      font-weight: 600; white-space: nowrap; cursor: pointer;
+    }
+    .btn--primary { background: var(--md-sys-color-primary); color: var(--md-sys-color-on-primary); }
+    .btn--tonal { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+    .btn--outline { border-color: var(--md-sys-color-outline); color: var(--md-sys-color-primary); }
+    .btn:disabled { opacity: 0.38; cursor: not-allowed; }
+
+    .content { display: grid; gap: 16px; padding: 24px; }
+    section { display: grid; gap: 16px; }
+    .banner {
+      padding: 10px 14px; border-radius: 12px; font-size: 13px;
+      background: var(--md-sys-color-surface-container); color: var(--md-sys-color-on-surface-variant);
+    }
+    .page-head { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+    .sub, .hint { font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+    .row { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+
+    .chip {
+      display: inline-flex; align-items: center; height: 24px; padding: 0 10px; border-radius: 999px;
+      font-size: 12px; font-weight: 600; white-space: nowrap;
+      background: var(--md-sys-color-surface-container-highest); color: var(--md-sys-color-on-surface-variant);
+    }
+    .chip--style { background: var(--md-sys-color-secondary-container); color: var(--md-sys-color-on-secondary-container); }
+    .chip--block { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
+    .chip--warn { background: var(--dz-warn-container); color: var(--dz-on-warn-container); }
+    .chip--ok { background: var(--dz-ok-container); color: var(--dz-on-ok-container); }
+
+    .card {
+      padding: 14px; border: 1px solid var(--md-sys-color-outline-variant); border-radius: 12px;
+      background: var(--md-sys-color-surface-container-lowest);
+    }
+    .card--flush { padding: 0; overflow: hidden; }
+
+    .board { display: grid; grid-template-columns: repeat(6, minmax(190px, 1fr)); gap: 12px; overflow-x: auto; }
+    .col {
+      display: flex; flex-direction: column; gap: 10px; min-height: 340px; padding: 10px; border-radius: 12px;
+      background: var(--md-sys-color-surface-container-low);
+    }
+    .col-head { display: flex; align-items: center; justify-content: space-between; }
+    .col-head span { font-weight: 500; color: var(--md-sys-color-on-surface-variant); }
+    .task { display: grid; gap: 8px; padding: 12px; }
+    .task p { font-size: 13px; color: var(--md-sys-color-on-surface-variant); }
+    .task h3 { font-family: Inter, system-ui, sans-serif; font-size: 14px; font-weight: 600; }
+    .avatar {
+      display: inline-grid; place-items: center; width: 24px; height: 24px; border-radius: 50%;
+      font-size: 11px; font-weight: 700;
+      background: var(--md-sys-color-tertiary-container); color: var(--md-sys-color-on-tertiary-container);
+    }
+    .meta { font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+
+    .editor { display: grid; grid-template-columns: 1fr 1fr 300px; gap: 12px; }
+    .pane { display: flex; flex-direction: column; gap: 8px; min-width: 0; }
+    .pane-title {
+      font-size: 12px; font-weight: 600; letter-spacing: 0.04em; text-transform: uppercase;
+      color: var(--md-sys-color-on-surface-variant);
+    }
+    .source, .preview { flex: 1; min-height: 480px; border-radius: 12px; }
+    .source {
+      resize: vertical; padding: 14px; border: 1px solid var(--md-sys-color-outline);
+      background: var(--md-sys-color-surface-container-lowest);
+      font-family: ui-monospace, Consolas, monospace; font-size: 13px; line-height: 22px;
+    }
+    .preview {
+      overflow: auto; padding: 20px; border: 1px solid var(--md-sys-color-outline-variant);
+      background: var(--md-sys-color-surface-container-lowest);
+    }
+    .preview-body { max-width: 680px; margin: 0 auto; font-size: 17px; line-height: 28px; }
+    .preview-title { font-family: Manrope, Inter, system-ui, sans-serif; font-size: 26px; line-height: 34px; font-weight: 700; margin-bottom: 12px; }
+    .preview-body h2 { font-size: 20px; line-height: 28px; margin: 24px 0 8px; }
+    .flag { text-decoration: underline wavy var(--md-sys-color-error); text-underline-offset: 4px; }
+    .flag-warn { text-decoration: underline dotted var(--dz-on-warn-container); text-underline-offset: 4px; }
+
+    .checks { display: grid; gap: 8px; }
+    .group { margin-top: 6px; font-size: 12px; font-weight: 600; color: var(--md-sys-color-on-surface-variant); }
+    .check {
+      display: grid; gap: 4px; padding: 10px; border-radius: 10px; font-size: 13px;
+      background: var(--md-sys-color-surface-container-low);
+    }
+    .check--block { background: var(--md-sys-color-error-container); color: var(--md-sys-color-on-error-container); }
+    .check--warn { background: var(--dz-warn-container); color: var(--dz-on-warn-container); }
+
+    .meta-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+    .field label { display: block; margin-bottom: 4px; font-size: 12px; font-weight: 600; color: var(--md-sys-color-on-surface-variant); }
+    .field input {
+      width: 100%; padding: 8px 10px; border: 1px solid var(--md-sys-color-outline); border-radius: 8px;
+      background: var(--md-sys-color-surface-container-lowest);
+    }
+    .actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 12px; }
+
+    table { width: 100%; border-collapse: collapse; }
+    th, td {
+      padding: 10px 12px; text-align: left; vertical-align: top; font-size: 13px;
+      border-bottom: 1px solid var(--md-sys-color-outline-variant);
+    }
+    th { font-size: 12px; font-weight: 600; color: var(--md-sys-color-on-surface-variant); }
+
+    .styles { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
+    .style h3 { font-family: Manrope, Inter, system-ui, sans-serif; font-size: 16px; }
+    .style dl { display: grid; gap: 8px; margin: 12px 0; }
+    .style dt { font-size: 12px; color: var(--md-sys-color-on-surface-variant); }
+    .style dd { margin: 0; }
+    .style a { font-size: 12px; }
+
+    @media (max-width: 1100px) {
+      .editor { grid-template-columns: 1fr 1fr; }
+      .checks-pane { grid-column: 1 / -1; }
+      .meta-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+    }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <div class="brand"><img src="../design/brand/logo-icon.svg" alt="" width="24" height="24">DzenWriter</div>
+      <nav class="nav" aria-label="Основное">
+        <a href="#/board">План</a>
+        <a href="#/article">Материал</a>
+        <a href="#/facts">Факт-база</a>
+        <a href="#/styles">Стили</a>
+        <a href="#/publications">Публикации</a>
+      </nav>
+      <div class="side-foot">Демо-пользователь<br>роль: автор</div>
+    </aside>
+
+    <div class="main">
+      <header class="top">
+        <div class="search"><input type="search" aria-label="Поиск материалов и фактов" placeholder="Поиск материалов и фактов"></div>
+        <div class="spacer"></div>
+        <button class="btn btn--outline" id="theme" type="button">Тема</button>
+        <button class="btn btn--primary" type="button">Новый материал</button>
+      </header>
+
+      <main class="content">
+        <div class="banner">Прототип. Материалы, факты и цифры вымышлены и показывают поведение интерфейса.</div>
+
+        <section id="view-board" hidden>
+          <div class="page-head">
+            <h1>План</h1>
+            <span class="sub">Шесть статусов. Фильтры: стиль, владелец, блокировки.</span>
+            <div class="spacer"></div>
+            <span class="chip chip--style">Все стили</span>
+          </div>
+          <div class="board">
+            <div class="col">
+              <div class="col-head"><h2>Идея</h2><span>1</span></div>
+              <article class="card task">
+                <h3>Агенты на длинных задачах: где ломаются</h3>
+                <div class="row"><span class="chip chip--style">Новости индустрии</span><span class="chip">Статья</span></div>
+                <p>Нужен источник с датой</p>
+                <div class="row"><span class="avatar">АН</span><span class="meta">обновлено 21.10</span></div>
+              </article>
+            </div>
+            <div class="col">
+              <div class="col-head"><h2>Факты</h2><span>1</span></div>
+              <article class="card task">
+                <h3>Как мы собираем базу знаний для поддержки</h3>
+                <div class="row"><span class="chip chip--style">Наш опыт</span><span class="chip">Кейс</span></div>
+                <p>Одобрено 1 из 2 фактов</p>
+                <div class="row"><span class="avatar">ЕК</span><span class="meta">обновлено 22.10</span></div>
+              </article>
+            </div>
+            <div class="col">
+              <div class="col-head"><h2>Черновик</h2><span>1</span></div>
+              <article class="card task">
+                <h3>Протоколы встреч без ручной расшифровки</h3>
+                <div class="row"><span class="chip chip--style">Описание продукта</span><span class="chip chip--block">Блокирует: 1</span></div>
+                <p>Число без факта</p>
+                <div class="row"><span class="avatar">МП</span><span class="meta">версия 3</span></div>
+              </article>
+            </div>
+            <div class="col">
+              <div class="col-head"><h2>Ревью</h2><span>1</span></div>
+              <article class="card task">
+                <h3>Три недели с ИИ в бухгалтерии</h3>
+                <div class="row"><span class="chip chip--style">Личный опыт</span><span class="chip chip--ok">Готово к ревью</span></div>
+                <p>Согласие подтверждено</p>
+                <div class="row"><span class="avatar">СР</span><span class="meta">обновлено 22.10</span></div>
+              </article>
+            </div>
+            <div class="col">
+              <div class="col-head"><h2>Утверждено</h2><span>1</span></div>
+              <article class="card task">
+                <h3>Пример новости о регулировании ИИ</h3>
+                <div class="row"><span class="chip chip--style">Новости индустрии</span><span class="chip chip--ok">Утверждено</span></div>
+                <p>Запланировано на 28.10</p>
+                <div class="row"><span class="avatar">АН</span><span class="meta">ревью: ЕК</span></div>
+              </article>
+            </div>
+            <div class="col">
+              <div class="col-head"><h2>Опубликовано</h2><span>1</span></div>
+              <article class="card task">
+                <h3>Кейс: RAG в колл-центре</h3>
+                <div class="row"><span class="chip chip--style">Наш опыт</span><span class="chip chip--ok">Ссылка добавлена</span></div>
+                <p>Пакет скачан</p>
+                <div class="row"><span class="avatar">ЕК</span><span class="meta">опубликовано</span></div>
+              </article>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-article" hidden>
+          <div class="page-head">
+            <h1>Протоколы встреч без ручной расшифровки</h1>
+            <span class="chip chip--style">Описание продукта</span>
+            <span class="chip">Статья</span>
+            <span class="chip">Версия 3</span>
+            <span class="chip">В черновике</span>
+            <div class="spacer"></div>
+            <span class="hint">7 340 знаков · формат 8 000–12 000</span>
+          </div>
+
+          <div class="editor">
+            <div class="pane">
+              <div class="pane-title">Исходник</div>
+              <textarea class="source" aria-label="Исходный текст статьи"># Протоколы встреч без ручной расшифровки
+
+Вы закончили созвон, а через полчаса всё ещё разбираете записи и пытаетесь вспомнить, кто что обещал. Знакомо?
+
+## Для кого это
+
+Для небольших команд, которые каждый день проводят созвоны и теряют решения между ними.
+
+## Что умеет
+
+- Расшифровывает запись и выделяет решения, задачи и сроки.
+- Помечает места, где текст не подтверждён записью.
+
+## Чего не умеет
+
+Сервис не заменяет проверку человеком. Имена и суммы из записи нужно перепроверить перед отправкой.
+
+Это самый быстрый способ собрать протокол. Сервис сокращает время на протокол на 38 %.
+
+## Как начать
+
+Подключите запись, выберите шаблон протокола и проверьте первый результат вместе с участниками встречи.</textarea>
+            </div>
+            <div class="pane">
+              <div class="pane-title">Предпросмотр, как в Дзене</div>
+              <div class="preview">
+                <div class="preview-body">
+                  <p class="preview-title">Протоколы встреч без ручной расшифровки</p>
+                  <p>Вы закончили созвон, а через полчаса всё ещё разбираете записи и пытаетесь вспомнить, кто что обещал. Знакомо?</p>
+                  <h2>Для кого это</h2>
+                  <p>Для небольших команд, которые каждый день проводят созвоны и теряют решения между ними.</p>
+                  <h2>Что умеет</h2>
+                  <ul>
+                    <li>Расшифровывает запись и выделяет решения, задачи и сроки.</li>
+                    <li>Помечает места, где текст не подтверждён записью.</li>
+                  </ul>
+                  <h2>Чего не умеет</h2>
+                  <p>Сервис не заменяет проверку человеком. Имена и суммы из записи нужно перепроверить перед отправкой.</p>
+                  <p>Это <span class="flag-warn">самый быстрый</span> способ собрать протокол. Сервис сокращает время на протокол на <span class="flag">38 %</span>.</p>
+                  <h2>Как начать</h2>
+                  <p>Подключите запись, выберите шаблон протокола и проверьте первый результат вместе с участниками встречи.</p>
+                </div>
+              </div>
+            </div>
+            <aside class="pane checks-pane" aria-label="Проверки">
+              <div class="pane-title">Проверки</div>
+              <div class="row"><span class="chip chip--block">Блокирует: 1</span><span class="chip chip--warn">Предупреждения: 1</span></div>
+              <div class="checks" aria-live="polite">
+                <div class="group">Блокирует</div>
+                <div class="check check--block"><strong>«38 %» — число без факта</strong><span>Привяжите подходящий факт из библиотеки или уберите число.</span></div>
+                <div class="group">Предупреждения</div>
+                <div class="check check--warn"><strong>«самый быстрый» — превосходная степень</strong><span>Подтвердите фактом или смягчите формулировку.</span></div>
+                <div class="group">Информация</div>
+                <div class="check"><strong>Раздел «Как начать» короткий</strong><span>Добавьте пример, чтобы читатель дошёл до конца.</span></div>
+              </div>
+            </aside>
+          </div>
+
+          <div class="card">
+            <div class="meta-grid">
+              <div class="field"><label for="seo">SEO-заголовок · 58/70</label><input id="seo" value="Протоколы встреч: решения и задачи без ручной расшифровки"></div>
+              <div class="field"><label for="tags">Теги · 6/7</label><input id="tags" value="встречи, протокол, продуктивность, ии, расшифровка, команда"></div>
+              <div class="field"><label for="desc">Описание · 2 предложения</label><input id="desc" value="Как получать протокол встречи с решениями и задачами без ручной работы после созвона."></div>
+              <div class="field"><label for="img">IMAGE_PROMPT</label><input id="img" value="Спокойная иллюстрация: ноутбук и заметки на столе, мягкий фиолетовый свет."></div>
+            </div>
+          </div>
+
+          <div class="actions">
+            <div class="row">
+              <button class="btn btn--tonal" type="button">Сгенерировать заново</button>
+              <button class="btn btn--outline" type="button">Сохранить версию</button>
+            </div>
+            <div class="row">
+              <span class="hint">Нельзя отправить: есть блокирующая проверка</span>
+              <button class="btn btn--primary" type="button" disabled>На ревью</button>
+            </div>
+          </div>
+        </section>
+
+        <section id="view-facts" hidden>
+          <div class="page-head">
+            <h1>Факт-база</h1>
+            <span class="sub">Общая библиотека: один факт можно использовать в нескольких материалах.</span>
+            <div class="spacer"></div>
+            <button class="btn btn--primary" type="button">Добавить факт</button>
+          </div>
+          <div class="card card--flush">
+            <table>
+              <thead>
+                <tr><th>ID</th><th>Тип</th><th>Текст</th><th>Источник и дата</th><th>Статус</th><th>В материалах</th></tr>
+              </thead>
+              <tbody>
+                <tr><td>F1</td><td>Источник новости</td><td>Цитата из пресс-релиза разработчика, в кавычках</td><td>Пресс-релиз, дата указана</td><td><span class="chip chip--ok">Одобрен</span></td><td>2</td></tr>
+                <tr><td>F2</td><td>Факт компании</td><td>Команда поддержки работает с ассистентом в тестовом режиме</td><td>Внутренние данные, дата указана</td><td><span class="chip chip--ok">Одобрен</span></td><td>1</td></tr>
+                <tr><td>F3</td><td>Факт продукта</td><td>Ассистент работает с записями на русском языке</td><td>Описание продукта</td><td><span class="chip chip--ok">Одобрен</span></td><td>1</td></tr>
+                <tr><td>F4</td><td>Заметка опыта</td><td>Интервью с пользователем, обезличено</td><td>Согласие получено</td><td><span class="chip chip--warn">Ждёт ревью</span></td><td>0</td></tr>
+                <tr><td>F5</td><td>Факт продукта</td><td>Записи длиннее двух часов обрабатываются по частям</td><td>Описание продукта</td><td><span class="chip">Черновик</span></td><td>0</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </section>
+
+        <section id="view-styles" hidden>
+          <div class="page-head">
+            <h1>Стили и форматы</h1>
+            <span class="sub">Читаются из config/styles. Меняются через PR.</span>
+          </div>
+          <div class="styles">
+            <article class="card style">
+              <h3>Новости индустрии</h3>
+              <p class="sub">Аналитический и технический разбор. Третье лицо.</p>
+              <dl>
+                <div><dt>Факты</dt><dd>Каждое число и имя со ссылкой на источник и датой</dd></div>
+                <div><dt>Нужно на входе</dt><dd>Минимум один источник с датой</dd></div>
+                <div><dt>Форматы</dt><dd>Новость, статья, лонгрид</dd></div>
+                <div><dt>Блокирует</dt><dd>Числа и имена без факта, утверждения без fact_ids, гарантии</dd></div>
+              </dl>
+              <a href="../config/styles/industry-news.yaml">config/styles/industry-news.yaml</a>
+            </article>
+            <article class="card style">
+              <h3>Наш опыт и достижения</h3>
+              <p class="sub">Рассказ команды о результатах. Голос «мы».</p>
+              <dl>
+                <div><dt>Факты</dt><dd>Только одобренные факты компании</dd></div>
+                <div><dt>Нужно на входе</dt><dd>Минимум два одобренных факта</dd></div>
+                <div><dt>Форматы</dt><dd>Кейс, статья, новость</dd></div>
+                <div><dt>Блокирует</dt><dd>Превосходные степени без факта, клиенты без разрешения</dd></div>
+              </dl>
+              <a href="../config/styles/company-achievements.yaml">config/styles/company-achievements.yaml</a>
+            </article>
+            <article class="card style">
+              <h3>Описание продукта</h3>
+              <p class="sub">Понятный рассказ о продукте. Голос «вы».</p>
+              <dl>
+                <div><dt>Факты</dt><dd>Только одобренные факты продукта</dd></div>
+                <div><dt>Нужно на входе</dt><dd>Продукт и минимум три факта, среди них ограничения</dd></div>
+                <div><dt>Форматы</dt><dd>Статья, подборка, лонгрид</dd></div>
+                <div><dt>Блокирует</dt><dd>Отсутствие маркировки рекламы, обещания результата без факта</dd></div>
+              </dl>
+              <a href="../config/styles/product-description.yaml">config/styles/product-description.yaml</a>
+            </article>
+            <article class="card style">
+              <h3>Личный опыт</h3>
+              <p class="sub">История от первого лица пользователя ИИ-систем.</p>
+              <dl>
+                <div><dt>Факты</dt><dd>Только заметки опыта с согласием и обезличиванием</dd></div>
+                <div><dt>Нужно на входе</dt><dd>Заметки от 800 знаков (предложение)</dd></div>
+                <div><dt>Форматы</dt><dd>Кейс, лонгрид, статья</dd></div>
+                <div><dt>Блокирует</dt><dd>Выдуманные числа и имена, текст не от первого лица</dd></div>
+              </dl>
+              <a href="../config/styles/personal-experience.yaml">config/styles/personal-experience.yaml</a>
+            </article>
+          </div>
+        </section>
+
+        <section id="view-publications" hidden>
+          <div class="page-head">
+            <h1>Публикации</h1>
+            <span class="sub">Публикация вручную. Ссылку на статью в Дзене вносим после публикации.</span>
+          </div>
+          <div class="card card--flush">
+            <table>
+              <thead>
+                <tr><th>Материал</th><th>Статус</th><th>Запланировано</th><th>Ссылка</th><th></th></tr>
+              </thead>
+              <tbody>
+                <tr><td>Кейс: RAG в колл-центре</td><td><span class="chip chip--ok">Опубликовано</span></td><td>—</td><td>Добавлена</td><td><button class="btn btn--outline" type="button">Скачать пакет</button></td></tr>
+                <tr><td>Пример новости о регулировании ИИ</td><td><span class="chip chip--warn">Запланировано</span></td><td>28.10.2026</td><td>Ждём публикацию</td><td><div class="row"><button class="btn btn--outline" type="button">Скачать пакет</button><button class="btn btn--tonal" type="button">Указать ссылку</button></div></td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p class="hint">Кнопки демонстрационные: пакет и ссылка формируются приложением в v1.</p>
+        </section>
+      </main>
+    </div>
+  </div>
+
+  <script>
+    const root = document.documentElement;
+    const views = ['board', 'article', 'facts', 'styles', 'publications'];
+
+    function route() {
+      const current = location.hash.replace('#/', '');
+      const active = views.includes(current) ? current : 'board';
+      for (const view of views) {
+        document.getElementById('view-' + view).hidden = view !== active;
+      }
+      document.querySelectorAll('.nav a').forEach((link) => {
+        if (link.getAttribute('href') === '#/' + active) {
+          link.setAttribute('aria-current', 'page');
+        } else {
+          link.removeAttribute('aria-current');
+        }
+      });
+    }
+
+    root.dataset.theme = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+    document.getElementById('theme').addEventListener('click', () => {
+      root.dataset.theme = root.dataset.theme === 'dark' ? 'light' : 'dark';
+    });
+    addEventListener('hashchange', route);
+    route();
+  </script>
+</body>
+</html>

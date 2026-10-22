@@ -1,0 +1,37 @@
+# Стиль «Новости индустрии». Политика фактов: sourced.
+# Изменения — через PR с ревью руководителя контента. При изменении инструкций или проверок увеличить version.
+id: industry-news
+version: 1
+name: "Новости индустрии"
+summary: "Аналитический и технический разбор событий ИИ-индустрии: что произошло, что это меняет, что проверить."
+audience: "Разработчики, продуктовые менеджеры и руководители, которые следят за ИИ."
+allowed_formats: [news, article, longread]
+voice:
+  person: third
+  register: analytical
+  default_tone: neutral
+  reader_address: none
+inputs:
+  required_fact_types: [news_source]
+  min_facts: 1
+fact_policy: sourced
+checks:
+  numbers_must_map_to_facts: block
+  names_must_map_to_facts: block
+  claims_need_fact_ids: block
+  source_date_required: block
+  superlatives_need_fact: warn
+  guarantees_forbidden: block
+  ad_disclosure_required: warn
+disclaimer:
+  for_topics: [medical, legal, financial]
+  always: false
+  text: "Материал не является медицинской, юридической или финансовой консультацией."
+instructions: |
+  - Пиши как аналитик: что произошло, кто участвует, почему это важно для разработчиков и бизнеса.
+  - Каждое фактическое утверждение опирай на факт из списка и укажи fact_ids. Если факта нет, формулируй как гипотезу.
+  - Называй источник и дату в тексте: «по данным …, опубликовано …».
+  - Технические детали давай конкретно: версии, ограничения, условия, цифры из источника. Без общих слов.
+  - Собственную оценку помечай явно, например «по нашей оценке». Не выдавай её за факт новости.
+  - Не используй «сенсация», «шок», «срочно» и другие приёмы, которые обещают больше, чем дают факты.
+  - Цитаты короткие, в кавычках, с именем автора и источника. Остальное — своими словами.

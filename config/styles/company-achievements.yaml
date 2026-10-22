@@ -1,0 +1,36 @@
+# Стиль «Наш опыт и достижения». Политика фактов: approved_only.
+# Изменения — через PR с ревью руководителя контента. При изменении инструкций или проверок увеличить version.
+id: company-achievements
+version: 1
+name: "Наш опыт и достижения"
+summary: "Рассказ команды о том, что сделали, что изменилось и чему научились. Только подтверждённые факты."
+audience: "Клиенты и партнёры, инженеры и руководители, которые выбирают ИИ-решения."
+allowed_formats: [case, article, news]
+voice:
+  person: we
+  register: descriptive
+  default_tone: neutral
+  reader_address: none
+inputs:
+  required_fact_types: [company_fact]
+  min_facts: 2
+  requires_approval: true
+fact_policy: approved_only
+checks:
+  numbers_must_map_to_facts: block
+  names_must_map_to_facts: block
+  claims_need_fact_ids: block
+  superlatives_need_fact: block
+  guarantees_forbidden: block
+  client_names_need_permission: block
+  ad_disclosure_required: warn
+disclaimer:
+  for_topics: [medical, legal, financial]
+  always: false
+  text: "Материал не является медицинской, юридической или финансовой консультацией."
+instructions: |
+  - Пиши от лица команды («мы»). Тон спокойный: без самовосхваления и превосходных степеней, если нет подтверждающего факта.
+  - Структура достижения: задача → что сделали → что изменилось → что проверили. Каждый результат — из одобренного факта.
+  - Клиентов и партнёров называй только при client_permission = true. Без разрешения описывай их общо, если это прямо разрешено фактом.
+  - Говори о сложностях и ограничениях: это повышает доверие.
+  - Заверши тем, что команда сделает дальше, или вопросом читателю.

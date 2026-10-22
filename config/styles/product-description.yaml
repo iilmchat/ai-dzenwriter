@@ -1,0 +1,37 @@
+# Стиль «Описание продукта». Политика фактов: approved_only.
+# Изменения — через PR с ревью руководителя контента. При изменении инструкций или проверок увеличить version.
+id: product-description
+version: 1
+name: "Описание продукта"
+summary: "Понятный рассказ о продукте: что это, для кого, как начать и чего он не делает."
+audience: "Потенциальные пользователи, которые ещё не знают продукт."
+allowed_formats: [article, roundup, longread]
+voice:
+  person: we
+  register: friendly-descriptive
+  default_tone: engaging
+  reader_address: you
+inputs:
+  required_fact_types: [product_fact]
+  min_facts: 3
+  requires_product: true
+fact_policy: approved_only
+checks:
+  numbers_must_map_to_facts: block
+  names_must_map_to_facts: block
+  claims_need_fact_ids: block
+  superlatives_need_fact: block
+  guarantees_forbidden: block
+  limitations_section_required: warn
+  ad_disclosure_required: block
+disclaimer:
+  for_topics: [medical, legal, financial]
+  always: false
+  text: "Материал не является медицинской, юридической или финансовой консультацией."
+instructions: |
+  - Обращайся к читателю на «вы». Объясняй без жаргона; термин сразу поясняй.
+  - Структура: для кого продукт → какую задачу решает → как начать (3 шага) → что умеет → чего не умеет → условия, только если есть одобренный факт.
+  - Ограничения назови честно: где нужна проверка человеком и что продукт не делает.
+  - Не обещай результат. «Сокращает время» — только с фактом; иначе «может помочь с …».
+  - Призыв к действию — один, мягкий, в конце.
+  - Текст о собственном продукте потенциально рекламный: ставь advertising_label_suggested = true. Окончательное решение о маркировке принимает ответственный.

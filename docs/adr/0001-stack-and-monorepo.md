@@ -1,0 +1,27 @@
+# ADR-0001. Стек и монорепозиторий
+
+**Статус:** предложено  
+**Дата:** 22.10.2026
+
+## Контекст
+
+Нужен внутренний инструмент: SPA с доской и редактором, API с ролями и гейтами, БД с версиями материалов. Команда уже ведёт `ai-ticketbuyer` на pnpm workspaces, Turborepo, NestJS, Drizzle и PostgreSQL 16. Инструмент внутренний и доступен только после входа, поэтому SEO и серверный рендер не нужны.
+
+## Решение
+
+- Монорепозиторий: pnpm workspaces и Turborepo. Node 24, pnpm 12, как в ai-ticketbuyer.
+- Web: React 19, TypeScript, Vite, React Router, TanStack Query, Tailwind CSS на токенах Material 3.
+- API: NestJS, TypeScript, Drizzle ORM, PostgreSQL 16. Zod-схемы в `packages/shared`.
+- Качество: Vitest, Playwright, ESLint, Prettier, GitHub Actions.
+
+## Альтернативы
+
+- **Next.js (App Router) как full-stack.** Совпадает со стеком ai-ticketbuyer, но серверный рендер не нужен, а серверные действия усложняют потоковую генерацию и разграничение прав. Отклонено.
+- **Fastify вместо NestJS.** Легче и быстрее стартует, но расходится со стеком организации. Отклонено для v1. Пересмотреть, если NestJS станет узким местом.
+- **SQLite.** Проще запускается, но для нескольких пользователей, миграций и резервных копий PostgreSQL удобнее. Отклонено.
+
+## Последствия
+
+- Общий стек с ai-ticketbuyer: переиспользуем Docker, CI и практики миграций.
+- Два приложения (SPA и API) — два деплоя. В Docker Compose они поднимаются вместе.
+- Очередь (BullMQ и Redis) в v1 не используется. Генерация идёт через SSE. Очередь появится в v2 вместе с пакетной генерацией.

@@ -1,0 +1,44 @@
+# Стиль «Личный опыт пользователя ИИ-систем». Политика фактов: experience_only.
+# Иллюстративный режим (вымышленные истории) не предусмотрен.
+# Изменения — через PR с ревью руководителя контента. При изменении инструкций или проверок увеличить version.
+id: personal-experience
+version: 1
+name: "Личный опыт пользователя ИИ-систем"
+summary: "История от первого лица пользователя ИИ-систем. Только реальный опыт из заметок автора."
+audience: "Пользователи ИИ-систем, которым важны реальные истории и выводы."
+allowed_formats: [case, longread, article]
+voice:
+  person: first
+  register: conversational
+  default_tone: engaging
+  reader_address: you
+inputs:
+  required_fact_types: [experience_note]
+  min_facts: 1
+  min_note_chars: 800   # предложение, подтвердить
+  requires_consent: true
+  requires_anonymization: true
+  illustrative_allowed: false
+fact_policy: experience_only
+checks:
+  numbers_must_map_to_facts: block
+  names_must_map_to_facts: block
+  claims_need_fact_ids: block
+  first_person_expected: block
+  personal_names_forbidden: block
+  superlatives_need_fact: warn
+  guarantees_forbidden: block
+  ad_disclosure_required: block
+disclaimer:
+  for_topics: [medical, legal, financial]
+  always: true
+  text: "Это личный опыт конкретного человека. Результаты у других могут отличаться."
+instructions: |
+  - Пиши от первого лица («я») как пользователь ИИ-системы, а не как сотрудник компании.
+  - Используй только события, числа, сроки и выводы из заметок опыта. Того, чего нет в заметках, в тексте быть не должно.
+  - Точные числа берём только из заметок. Если числа в заметках нет, опиши словами, например «заметно дольше, чем хотелось».
+  - Структура: исходная задача → что пробовал → что сработало и что нет → что изменил → вывод.
+  - Эмоции и оценки автора допустимы: «мне было неудобно». Общие утверждения про ИИ вроде «ИИ всегда ошибается» — нет.
+  - Людей и компании называй ролями («коллега», «служба поддержки»), если нет разрешения на имена.
+  - Если заметок мало для связного текста, верни status = "needs_input" и вопросы автору. Не дописывай историю.
+  - В конце добавь оговорку из disclaimer.text.
