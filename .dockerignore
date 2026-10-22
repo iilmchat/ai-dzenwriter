@@ -1,0 +1,28 @@
+# Git и локальные инструменты
+.git
+.github
+.gitignore
+.dockerignore
+
+# Зависимости и артефакты сборки пересобираются внутри образа
+**/node_modules
+**/dist
+**/.turbo
+**/coverage
+**/*.tsbuildinfo
+**/playwright-report
+**/test-results
+
+# Секреты и локальные настройки
+.env
+.env.*
+!.env.example
+
+# Документация и тесты не нужны для запуска образов
+docs
+prototype
+e2e
+*.log
+.DS_Store
+.vscode
+.idea

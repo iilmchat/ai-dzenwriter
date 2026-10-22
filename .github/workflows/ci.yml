@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  PNPM_VERSION: 12.11.2
+
+jobs:
+  checks:
+    name: Проверки и тесты
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dzenwriter
+          POSTGRES_PASSWORD: dzenwriter
+          POSTGRES_DB: dzenwriter
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dzenwriter -d dzenwriter"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://dzenwriter:dzenwriter@localhost:5432/dzenwriter
+      TEST_DATABASE_URL: postgres://dzenwriter:dzenwriter@localhost:5432/dzenwriter
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm format:check
+      - run: pnpm config:validate
+      - run: pnpm lint
+      - run: pnpm typecheck
+      - run: pnpm build
+      - run: pnpm test
+      - run: pnpm db:migrate
+      - run: pnpm db:seed
+
+  e2e:
+    name: E2E в браузере
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: dzenwriter
+          POSTGRES_PASSWORD: dzenwriter
+          POSTGRES_DB: dzenwriter
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U dzenwriter -d dzenwriter"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      DATABASE_URL: postgres://dzenwriter:dzenwriter@localhost:5432/dzenwriter
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: ${{ env.PNPM_VERSION }}
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm build
+      - run: pnpm db:migrate
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: playwright-report/
+          retention-days: 7
+
+  docker:
+    name: Docker Compose
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+
+      - run: docker compose config --quiet
+      - run: docker compose up -d --build --wait
+      - run: curl --fail --silent --show-error http://127.0.0.1:8080/ready
+
+      - name: Логи при ошибке
+        if: failure()
+        run: docker compose logs --no-color
+
+      - name: Остановка стека
+        if: always()
+        run: docker compose down --volumes

@@ -1,0 +1,25 @@
+id: other-id
+version: 1
+name: Личный опыт
+summary: Для проверки ошибок конфигурации.
+audience: Тест.
+allowed_formats: [case]
+voice:
+  person: first
+  register: conversational
+  default_tone: engaging
+  reader_address: you
+inputs:
+  required_fact_types: [experience_note]
+  min_facts: 1
+  requires_consent: true
+  requires_anonymization: true
+  illustrative_allowed: true
+fact_policy: experience_only
+checks:
+  numbers_must_map_to_facts: block
+disclaimer:
+  for_topics: []
+  always: true
+  text: Тест.
+instructions: Тест.

@@ -1,0 +1,22 @@
+id: bad-style
+version: 1
+name: Плохой стиль
+summary: Для проверки ошибок конфигурации.
+audience: Тест.
+allowed_formats: [podcast]
+voice:
+  person: third
+  register: analytical
+  default_tone: neutral
+  reader_address: none
+inputs:
+  required_fact_types: [news_source]
+  min_facts: 1
+fact_policy: sourced
+checks:
+  made_up_check: block
+disclaimer:
+  for_topics: []
+  always: false
+  text: Тест.
+instructions: Тест.

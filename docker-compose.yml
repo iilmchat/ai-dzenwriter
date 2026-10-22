@@ -1,0 +1,87 @@
+name: dzenwriter
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-dzenwriter}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-dzenwriter}
+      POSTGRES_DB: ${POSTGRES_DB:-dzenwriter}
+    ports:
+      - '127.0.0.1:${POSTGRES_PORT:-5432}:5432'
+    volumes:
+      - dzenwriter_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ['CMD-SHELL', 'pg_isready -U "$$POSTGRES_USER" -d "$$POSTGRES_DB"']
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # Миграции — отдельный одноразовый сервис: API не мигрирует сам при старте,
+  # поэтому реплики не конкурируют за изменения схемы.
+  migrate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    image: dzenwriter-api:local
+    command: ['node', 'node_modules/@dzenwriter/db/dist/migrate.js']
+    environment:
+      DATABASE_URL: postgres://${POSTGRES_USER:-dzenwriter}:${POSTGRES_PASSWORD:-dzenwriter}@postgres:5432/${POSTGRES_DB:-dzenwriter}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: 'no'
+
+  api:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: api
+    image: dzenwriter-api:local
+    init: true
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_PORT: '4000'
+      LOG_LEVEL: ${LOG_LEVEL:-info}
+      WEB_ORIGIN: http://localhost:${WEB_PORT:-8080}
+      DATABASE_URL: postgres://${POSTGRES_USER:-dzenwriter}:${POSTGRES_PASSWORD:-dzenwriter}@postgres:5432/${POSTGRES_DB:-dzenwriter}
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        [
+          'CMD',
+          'node',
+          '-e',
+          "fetch('http://127.0.0.1:4000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+        ]
+      interval: 10s
+      timeout: 5s
+      retries: 12
+      start_period: 15s
+
+  web:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      target: web
+    image: dzenwriter-web:local
+    restart: unless-stopped
+    ports:
+      - '127.0.0.1:${WEB_PORT:-8080}:8080'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '-q', '-O', '/dev/null', 'http://127.0.0.1:8080/']
+      interval: 10s
+      timeout: 5s
+      retries: 6
+      start_period: 5s
+
+volumes:
+  dzenwriter_pgdata:

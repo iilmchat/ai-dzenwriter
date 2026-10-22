@@ -9,7 +9,7 @@
 
 Внутренний инструмент IIRuChating для планирования, генерации, проверки и отслеживания статей для Яндекс Дзен.
 
-**Статус:** дизайн v0.1 на согласовании. Кода приложения пока нет. Подробнее — [docs/04-implementation-status.md](docs/04-implementation-status.md).
+**Статус:** E1 Foundations выполнен: монорепозиторий, база, API, веб, Docker и CI. Дальше — авторизация (E2). Подробнее — [docs/04-implementation-status.md](docs/04-implementation-status.md).
 
 **Фокус v1:** ИИ — агенты, LLM-системы и их внедрение, новости индустрии, продукты и опыт IIRuChating.
 
@@ -32,31 +32,68 @@
 5. Публикация в Дзен — вручную (ADR-0002). Автоматизацию редактора не делаем.
 6. Интерфейс — в брендовом стиле IIRuChating (ai-brand), доступность по WCAG 2.2 AA.
 
-## Стек (план)
+## Быстрый старт
 
-- Монорепозиторий: pnpm workspaces и Turborepo.
-- Web: React 19, TypeScript, Vite, Tailwind CSS на токенах Material 3.
-- API: NestJS, Drizzle ORM, PostgreSQL 16.
-- Генерация: OpenAI-совместимый API со структурированным JSON-ответом.
-- Качество: Vitest, Playwright, ESLint, Prettier, GitHub Actions.
+Нужны Node.js 24, pnpm 12.11.2 и Docker Desktop.
 
-Обоснование — в [docs/00-design.md](docs/00-design.md) и в [ADR](docs/adr/).
+```bash
+corepack enable            # или: npm install -g pnpm@12.11.2
+pnpm install
+cp .env.example .env       # в Windows: copy .env.example .env
+pnpm db:up                 # PostgreSQL в Docker
+pnpm db:migrate            # схема и миграции
+pnpm db:seed               # демо-данные, только для разработки
+pnpm dev                   # API на http://localhost:4000, веб на http://localhost:5173
+```
+
+Откройте http://localhost:5173: страница покажет состояние сервиса. Порты по умолчанию: API 4000, веб в разработке 5173, предпросмотр 4173, PostgreSQL 5432, compose-веб 8080. Если порт занят, задайте свой в `.env` (`API_PORT`, `WEB_DEV_PORT`, `WEB_PREVIEW_PORT`, `POSTGRES_PORT`, `WEB_PORT`).
+
+### Полный стек в Docker
+
+```bash
+docker compose up -d --build --wait
+```
+
+Откройте http://localhost:8080 (порт задаётся переменной `WEB_PORT`). Миграции выполняет отдельный сервис `migrate`.
+
+Остановить: `docker compose down`. Полный сброс вместе с данными: `docker compose down --volumes`.
+
+### Команды
+
+| Команда                                            | Что делает                                                                              |
+| -------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| `pnpm build`                                       | Сборка всех пакетов                                                                     |
+| `pnpm dev`                                         | API и веб в режиме разработки                                                           |
+| `pnpm lint`, `pnpm typecheck`, `pnpm format:check` | Качество кода                                                                           |
+| `pnpm config:validate`                             | Проверка `config/` без базы                                                             |
+| `pnpm test`                                        | Тесты пакетов. Нужна база из `TEST_DATABASE_URL` (см. `.env.example`)                   |
+| `pnpm build && pnpm test:e2e`                      | Сквозной тест в Chromium. Нужны `pnpm exec playwright install chromium` и миграции базы |
+| `pnpm db:generate`                                 | Новая миграция после изменения схемы                                                    |
+
+## Переменные окружения
+
+Все переменные описаны в [`.env.example`](.env.example). Файл `.env` не коммитится, секреты в репозиторий не кладём. В E2 и E6 появятся `GITHUB_CLIENT_SECRET` и `LLM_API_KEY`.
+
+Переменные проверяются при старте. Если значение неверно, API не запускается и называет переменную в сообщении.
 
 ## Структура
 
 ```text
-config/
-  formats.yaml         форматы: каркас, объём, число блоков
-  styles/              четыре стиля: голос, политика фактов, проверки, инструкции
-prompts/
-  dzen_writer.md       базовый системный промпт Dzen Writer
-design/
-  brand/               ассеты ai-brand, закреплённый коммит (см. design/brand/README.md)
-docs/                  дизайн, данные, backlog, статус, UI, право, ADR
-prototype/             кликабельный HTML-прототип интерфейса
+apps/
+  api/           NestJS API: конфигурация, здоровье, ошибки, логи
+  web/           React и Vite: страница состояния сервиса
+packages/
+  db/            схема Drizzle, миграции, демо-данные
+  shared/        константы, Zod-схемы конфигурации и контракты API
+config/          форматы и стили: YAML, проверяются при старте
+prompts/         базовый промпт Dzen Writer
+design/brand/    ассеты ai-brand (закреплённый коммит)
+docker/          конфигурация nginx для образа web
+e2e/             сквозные тесты Playwright
+docs/            дизайн, данные, backlog, статус, UI, право, ADR
+prototype/       кликабельный HTML-прототип интерфейса
+.github/         CI и Dependabot
 ```
-
-Код приложения (`apps/`, `packages/`) появится на этапе E1 из [backlog](docs/03-mvp-backlog.md).
 
 ## Документация
 

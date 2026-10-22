@@ -1,0 +1,30 @@
+unit: chars_with_spaces
+default_length:
+  min: 6000
+  max: 8000
+formats:
+  news:
+    name: Новость
+    length: { min: 4000, max: 6000 }
+    blocks: { min: 2, max: 3 }
+    structure: лид
+  article:
+    name: Статья
+    length: { min: 8000, max: 12000 }
+    blocks: { min: 3, max: 5 }
+    structure: вступление
+  longread:
+    name: Лонгрид
+    length: { min: 12000, max: 20000 }
+    blocks: { min: 5, max: 7 }
+    structure: крючок
+  roundup:
+    name: Подборка
+    length: { min: 6000, max: 10000 }
+    items: { min: 5, max: 10 }
+    structure: вступление
+  case:
+    name: Кейс
+    length: { min: 8000, max: 12000 }
+    blocks: { min: 4, max: 5 }
+    structure: контекст

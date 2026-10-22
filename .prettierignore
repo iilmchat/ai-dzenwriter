@@ -1,0 +1,11 @@
+node_modules
+dist
+coverage
+pnpm-lock.yaml
+prototype/index.html
+design/brand/*.css
+design/brand/LICENSE.md
+playwright-report
+test-results
+.turbo
+packages/db/migrations/meta

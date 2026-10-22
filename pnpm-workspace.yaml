@@ -1,0 +1,10 @@
+packages:
+  - apps/*
+  - packages/*
+
+# Свежие версии пакетов не ставятся сразу: защита от компрометированных релизов (сутки).
+minimumReleaseAge: 1440
+
+allowBuilds:
+  esbuild: true
+  '@swc/core': true

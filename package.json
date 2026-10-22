@@ -1,0 +1,43 @@
+{
+  "name": "dzenwriter",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Внутренний инструмент IIRuChating для статей в Яндекс Дзен",
+  "author": "RuChating (iilmchat)",
+  "license": "UNLICENSED",
+  "packageManager": "pnpm@12.11.2",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "build": "turbo run build",
+    "dev": "turbo run dev --parallel",
+    "dev:web": "pnpm --filter @dzenwriter/web dev",
+    "dev:api": "pnpm --filter @dzenwriter/api dev",
+    "lint": "eslint .",
+    "typecheck": "turbo run typecheck",
+    "test": "turbo run test",
+    "test:e2e": "playwright test",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "config:validate": "pnpm --filter @dzenwriter/api config:validate",
+    "db:up": "docker compose up -d postgres",
+    "db:generate": "pnpm --filter @dzenwriter/db generate",
+    "db:migrate": "pnpm --filter @dzenwriter/db migrate",
+    "db:seed": "pnpm --filter @dzenwriter/db seed",
+    "docker:up": "docker compose up -d --build --wait",
+    "docker:down": "docker compose down",
+    "docker:logs": "docker compose logs -f api web"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@playwright/test": "^1.64.1",
+    "eslint": "^10.13.0",
+    "eslint-plugin-react-hooks": "^7.1.1",
+    "globals": "^17.13.0",
+    "prettier": "^3.9.10",
+    "turbo": "^2.11.10",
+    "typescript": "^5.9.3",
+    "typescript-eslint": "^8.72.0"
+  }
+}
