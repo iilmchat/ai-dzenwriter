@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
-import type { FormatConfig, ModelClaim, StyleConfig } from '@dzenwriter/shared';
+import type { FormatConfig, StyleConfig } from '@dzenwriter/shared';
 import { runChecks, type CheckOutput } from './check-engine';
-import type { CheckFact } from './check-context';
+import type { CheckClaim, CheckFact } from './check-context';
 import { APP_CONFIG } from '../config/tokens';
 import type { AppConfig } from '../config/app-config';
 
@@ -18,7 +18,7 @@ export interface VersionChecksInput {
   readonly articleMarkdown: string;
   readonly advertisingLabel: boolean;
   readonly disclaimerText: string | null;
-  readonly claims: readonly ModelClaim[];
+  readonly claims: readonly CheckClaim[];
   readonly factLabels: readonly string[];
 }
 

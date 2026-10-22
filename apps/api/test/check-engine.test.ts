@@ -172,8 +172,8 @@ describe('проверка утверждений', () => {
   it('утверждение о факте без fact_ids блокирует', () => {
     const result = runChecks(
       input({
-        style: styleWith({ claims_need_fact_ids: 'block' }),
-        claims: [{ text: 'Пакет приняли в ЕС', type: 'fact', fact_ids: [] }],
+        style: styleWith({ claims_need_factIds: 'block' }),
+        claims: [{ text: 'Пакет приняли в ЕС', type: 'fact', factIds: [] }],
       }),
     );
 
@@ -183,8 +183,8 @@ describe('проверка утверждений', () => {
   it('утверждение с неизвестной меткой блокирует', () => {
     const result = runChecks(
       input({
-        style: styleWith({ claims_need_fact_ids: 'block' }),
-        claims: [{ text: 'Пакет приняли в ЕС', type: 'fact', fact_ids: ['F7'] }],
+        style: styleWith({ claims_need_factIds: 'block' }),
+        claims: [{ text: 'Пакет приняли в ЕС', type: 'fact', factIds: ['F7'] }],
       }),
     );
 
@@ -195,8 +195,8 @@ describe('проверка утверждений', () => {
   it('гипотеза с fact_ids блокирует', () => {
     const result = runChecks(
       input({
-        style: styleWith({ claims_need_fact_ids: 'block' }),
-        claims: [{ text: 'Рынок вырастет', type: 'hypothesis', fact_ids: ['F1'] }],
+        style: styleWith({ claims_need_factIds: 'block' }),
+        claims: [{ text: 'Рынок вырастет', type: 'hypothesis', factIds: ['F1'] }],
       }),
     );
 
@@ -206,9 +206,9 @@ describe('проверка утверждений', () => {
   it('корректное утверждение проходит и получает место в тексте', () => {
     const result = runChecks(
       input({
-        style: styleWith({ claims_need_fact_ids: 'block' }),
+        style: styleWith({ claims_need_factIds: 'block' }),
         claims: [
-          { text: 'Европейский союз принял пакет правил по ИИ', type: 'fact', fact_ids: ['F1'] },
+          { text: 'Европейский союз принял пакет правил по ИИ', type: 'fact', factIds: ['F1'] },
         ],
       }),
     );

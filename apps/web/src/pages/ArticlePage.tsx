@@ -101,6 +101,14 @@ export function ArticlePage() {
           {article.plannedAt ? `, плановая дата: ${formatDate(article.plannedAt)}` : ''}, версия{' '}
           {article.version}
         </p>
+        {canEdit ? (
+          <Link
+            to={`/articles/${article.id}/edit`}
+            className={`mt-1 w-fit text-sm font-medium hover:underline ${FOCUS_RING}`}
+          >
+            Редактировать текст
+          </Link>
+        ) : null}
       </header>
 
       <div className="grid gap-6 lg:grid-cols-2">

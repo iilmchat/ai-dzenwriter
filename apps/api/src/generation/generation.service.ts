@@ -305,7 +305,11 @@ export class GenerationService {
         articleMarkdown: output.article_markdown,
         advertisingLabel: output.advertising_label_suggested,
         disclaimerText: output.disclaimer_needed ? plan.context.style.disclaimer.text : null,
-        claims: output.claims,
+        claims: output.claims.map((claim) => ({
+          text: claim.text,
+          type: claim.type,
+          factIds: claim.fact_ids,
+        })),
         factLabels: plan.context.factLabels,
       });
       const blocking = checks.checks.filter((item) => item.severity === 'block').length;

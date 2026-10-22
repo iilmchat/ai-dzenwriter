@@ -20,15 +20,23 @@ import {
   articleListQuerySchema,
   attachFactInputSchema,
   type AttachFactInput,
+  type CheckVersionInput,
+  checkVersionInputSchema,
+  type CheckVersionResponse,
   type ConfirmCheckInput,
   confirmCheckInputSchema,
   type CreateArticleInput,
   type CreateArticleResponse,
   createArticleInputSchema,
+  saveVersionInputSchema,
+  type SaveVersionInput,
+  type SaveVersionResponse,
   type TransitionInput,
   transitionInputSchema,
   type UpdateArticleInput,
   updateArticleInputSchema,
+  type VersionDetail,
+  type VersionListResponse,
 } from '@dzenwriter/shared';
 import { AuthUser } from '../auth/auth.decorators';
 import type { SessionUser } from '../auth/auth.service';
@@ -114,6 +122,58 @@ export class ArticlesController {
     @AuthUser() actor: SessionUser,
   ): Promise<ArticleDetail> {
     return this.articles.confirmCheck(actor, id, number, index, body.comment, new Date());
+  }
+
+  // История версий материала.
+  @Get(':id/versions')
+  async listVersions(
+    @Param('id', articleIdPipe()) id: string,
+    @AuthUser() actor: SessionUser,
+  ): Promise<VersionListResponse> {
+    return { items: await this.articles.listVersions(actor, id) };
+  }
+
+  // Полное содержимое версии: его показывает редактор.
+  @Get(':id/versions/:number')
+  async getVersion(
+    @Param('id', articleIdPipe()) id: string,
+    @Param('number', versionNumberPipe()) number: number,
+    @AuthUser() actor: SessionUser,
+  ): Promise<VersionDetail> {
+    return this.articles.getVersion(actor, id, number);
+  }
+
+  // Пробный прогон проверок: текст проверяется, версия не создаётся.
+  @Post(':id/versions/check')
+  @HttpCode(HttpStatus.OK)
+  async checkVersion(
+    @Param('id', articleIdPipe()) id: string,
+    @Body(new ZodValidationPipe(checkVersionInputSchema)) body: CheckVersionInput,
+    @AuthUser() actor: SessionUser,
+  ): Promise<CheckVersionResponse> {
+    return this.articles.checkVersion(actor, id, body);
+  }
+
+  // Ручное сохранение версии: проверки считаются на сервере.
+  @Post(':id/versions')
+  @HttpCode(HttpStatus.CREATED)
+  async saveVersion(
+    @Param('id', articleIdPipe()) id: string,
+    @Body(new ZodValidationPipe(saveVersionInputSchema)) body: SaveVersionInput,
+    @AuthUser() actor: SessionUser,
+  ): Promise<SaveVersionResponse> {
+    return this.articles.saveVersion(actor, id, body, new Date());
+  }
+
+  // Откат: новая версия с текстом старой.
+  @Post(':id/versions/:number/rollback')
+  @HttpCode(HttpStatus.CREATED)
+  async rollback(
+    @Param('id', articleIdPipe()) id: string,
+    @Param('number', versionNumberPipe()) number: number,
+    @AuthUser() actor: SessionUser,
+  ): Promise<SaveVersionResponse> {
+    return this.articles.rollback(actor, id, number, new Date());
   }
 
   @Delete(':id/facts/:factId')

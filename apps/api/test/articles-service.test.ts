@@ -10,6 +10,7 @@ import { describe, expect, it } from 'vitest';
 import { emptyFactTotals, OUT_OF_FOCUS_WARNING } from '../src/articles/article-rules';
 import { ArticlesService } from '../src/articles/articles.service';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
+import { ChecksService } from '../src/checks/checks.service';
 import { InMemoryArticlesRepository } from './support/in-memory-articles.repository';
 import { InMemoryCatalog } from './support/in-memory-catalog';
 import { type StoredFact, InMemoryFactsRepository } from './support/in-memory-facts.repository';
@@ -29,7 +30,7 @@ function setup() {
   const facts = new InMemoryFactsRepository();
   const repo = new InMemoryArticlesRepository(facts);
   const catalog = new InMemoryCatalog();
-  const service = new ArticlesService(repo, catalog, facts, config);
+  const service = new ArticlesService(repo, catalog, facts, new ChecksService(config), config);
   const addPerson = (login: string) => {
     const person = repo.addPerson(login);
     facts.people.set(person.id, person);
@@ -58,6 +59,143 @@ async function createArticle(
   const response = await harness.service.create(actor, { ...NEWS, ...overrides });
   return response.article;
 }
+
+describe('ручное сохранение версии и откат', () => {
+  async function articleWithFacts(harness: Harness) {
+    const article = await createArticle(harness);
+    const fact = harness.facts.addFact({
+      type: 'news_source',
+      text: 'Европейский союз принял пакет правил по ИИ.',
+      sourceName: 'Reuters',
+      sourceUrl: 'https://example.com/eu-ai-act',
+      sourcePublishedAt: '2026-10-20',
+      status: 'approved',
+      createdById: harness.actors.owner.id,
+    });
+    await harness.repo.attachFact(article.id, fact.id, harness.actors.owner.id);
+    const totals = emptyFactTotals();
+    totals.news_source = { count: 1, chars: fact.text.length };
+    harness.repo.setTotals(article.id, totals);
+    return article;
+  }
+
+  const DRAFT = {
+    title: 'Правленый заголовок',
+    articleMarkdown: 'Европейский союз принял пакет правил по ИИ 42 раза.',
+    seoTitle: 'Правленый SEO-заголовок',
+    tags: ['ии', 'практика'],
+    description: 'Описание',
+    imagePrompt: 'Обложка',
+    advertisingLabel: false,
+    disclaimerText: null,
+    claims: [
+      {
+        text: 'Европейский союз принял пакет правил по ИИ',
+        type: 'fact' as const,
+        factIds: ['F1'],
+      },
+    ],
+  };
+
+  it('автор сохраняет версию: проверки считаются, утверждения получают места', async () => {
+    const harness = setup();
+    const article = await articleWithFacts(harness);
+
+    const response = await harness.service.saveVersion(
+      harness.actors.owner,
+      article.id,
+      { ...DRAFT, expectedVersion: article.version },
+      NOW,
+    );
+
+    expect(response.version.number).toBe(1);
+    expect(response.version.origin).toBe('manual');
+    expect(response.version.claims[0]?.start).toBe(0);
+    expect(response.version.claims[0]?.end).toBeGreaterThan(0);
+    // Числа 42 в фактах нет — это блокирующая проверка.
+    expect(response.version.checks.map((item) => item.id)).toContain('numbers_must_map_to_facts');
+    expect(harness.repo.audit.at(-1)).toMatchObject({ action: 'version.create' });
+  });
+
+  it('устаревшая версия материала даёт 409', async () => {
+    const harness = setup();
+    const article = await articleWithFacts(harness);
+
+    await expect(
+      harness.service.saveVersion(
+        harness.actors.owner,
+        article.id,
+        { ...DRAFT, expectedVersion: article.version + 5 },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('чужой пользователь не сохраняет версию', async () => {
+    const harness = setup();
+    const article = await articleWithFacts(harness);
+
+    await expect(
+      harness.service.saveVersion(
+        harness.actors.stranger,
+        article.id,
+        { ...DRAFT, expectedVersion: article.version },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('откат создаёт новую версию с текстом старой', async () => {
+    const harness = setup();
+    const article = await articleWithFacts(harness);
+    await harness.service.saveVersion(
+      harness.actors.owner,
+      article.id,
+      { ...DRAFT, expectedVersion: article.version },
+      NOW,
+    );
+
+    const response = await harness.service.rollback(harness.actors.owner, article.id, 1, NOW);
+
+    expect(response.version.number).toBe(2);
+    expect(response.version.origin).toBe('rollback');
+    expect(response.version.articleMarkdown).toBe(DRAFT.articleMarkdown);
+    expect(harness.repo.audit.at(-1)).toMatchObject({ action: 'version.rollback' });
+  });
+
+  it('история и содержимое версии читаются', async () => {
+    const harness = setup();
+    const article = await articleWithFacts(harness);
+    await harness.service.saveVersion(
+      harness.actors.owner,
+      article.id,
+      { ...DRAFT, expectedVersion: article.version },
+      NOW,
+    );
+
+    const versions = await harness.service.listVersions(harness.actors.owner, article.id);
+    const version = await harness.service.getVersion(harness.actors.owner, article.id, 1);
+
+    expect(versions).toHaveLength(1);
+    expect(versions[0]).toMatchObject({ number: 1, origin: 'manual' });
+    expect(version.title).toBe(DRAFT.title);
+  });
+
+  it('утверждённый материал не принимает новые версии', async () => {
+    const harness = setup();
+    const article = await articleWithFacts(harness);
+    harness.repo.setStatus(article.id, 'approved');
+
+    await expect(
+      harness.service.saveVersion(
+        harness.actors.owner,
+        article.id,
+        { ...DRAFT, expectedVersion: article.version },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+});
 
 describe('подтверждение проверок', () => {
   const BLOCKING = {

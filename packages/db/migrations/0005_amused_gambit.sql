@@ -1,0 +1,2 @@
+ALTER TABLE "article_versions" DROP CONSTRAINT "article_versions_origin_check";--> statement-breakpoint
+ALTER TABLE "article_versions" ADD CONSTRAINT "article_versions_origin_check" CHECK (origin IN ('generated', 'manual', 'rollback'));

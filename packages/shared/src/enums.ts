@@ -53,7 +53,7 @@ export type PublicationStatus = (typeof PUBLICATION_STATUSES)[number];
 export const PUBLICATION_CHANNELS = ['dzen'] as const;
 export type PublicationChannel = (typeof PUBLICATION_CHANNELS)[number];
 
-export const VERSION_ORIGINS = ['generated', 'manual'] as const;
+export const VERSION_ORIGINS = ['generated', 'manual', 'rollback'] as const;
 export type VersionOrigin = (typeof VERSION_ORIGINS)[number];
 
 export const METRIC_SOURCES = ['manual', 'csv'] as const;

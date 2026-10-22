@@ -127,7 +127,7 @@
 | `id`                | uuid, PK                          |                                                                                 |
 | `article_id`        | uuid, FK на articles              | Уникально вместе с `number`                                                     |
 | `number`            | int                               | 1, 2, 3…                                                                        |
-| `origin`            | text                              | `generated` или `manual`                                                        |
+| `origin`            | text                              | `generated`, `manual` или `rollback`                                            |
 | `title`             | text                              |                                                                                 |
 | `article_markdown`  | text                              | Тело статьи без H1                                                              |
 | `seo_title`         | text                              |                                                                                 |

@@ -367,8 +367,10 @@ prototype/            HTML-прототип
 | `POST /facts/{id}/approve`, `POST /facts/{id}/reject`               | Одобрение и отклонение                                                              | ревьюер, не автор факта                          |
 | `POST /facts/{id}/consent`, `POST /facts/{id}/consent/withdraw`     | Согласие на личный опыт и отзыв (текст удаляется)                                   | ревьюер; отзыв также автор заметки               |
 | `POST /facts/{id}/corrections`                                      | Исправление одобренного факта                                                       | любой вошедший                                   |
-| `GET /articles/{id}/versions`, `GET /articles/{id}/versions/{n}`    | История версий                                                                      | author                                           |
+| `GET /articles/{id}/versions`, `GET /articles/{id}/versions/{n}`    | История версий и полное содержимое версии                                           | author                                           |
+| `POST /articles/{id}/versions/check`                                | Пробный прогон проверок: версия не создаётся                                        | author                                           |
 | `POST /articles/{id}/versions`                                      | Ручное сохранение версии с проверками                                               | author                                           |
+| `POST /articles/{id}/versions/{n}/rollback`                         | Откат: новая версия с текстом старой                                                | author                                           |
 | `POST /articles/{id}/reviews`                                       | Утвердить или запросить правки                                                      | reviewer                                         |
 | `GET /articles/{id}/export`                                         | Пакет для Дзена (zip)                                                               | author                                           |
 | `POST /articles/{id}/publication`                                   | Запланировать или отметить публикацию со ссылкой                                    | author, reviewer                                 |

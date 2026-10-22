@@ -61,8 +61,6 @@ export function defaultContent(request: LlmRequest): string {
     status: 'ok',
     title: topic.slice(0, 80),
     article_markdown: [
-      `## ${topic}`,
-      '',
       'Вступление: зачем эта тема важна читателю и что он узнает из материала.',
       '',
       'Основная часть: факты из списка ниже, без чисел и имён, которых в фактах нет.',

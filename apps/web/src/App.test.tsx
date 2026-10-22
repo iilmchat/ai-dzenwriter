@@ -428,6 +428,64 @@ describe('приложение', () => {
     expect(posted).toEqual([{ comment: 'Это номер пункта правил.' }]);
   });
 
+  it('редактор показывает исходник, предпросмотр и панель проверок', async () => {
+    const version = {
+      number: 2,
+      origin: 'generated',
+      title: 'Заголовок статьи',
+      articleMarkdown: 'Первый абзац.\n\nВторой абзац.',
+      seoTitle: 'SEO',
+      tags: ['ии'],
+      description: 'Описание',
+      imagePrompt: 'Обложка',
+      advertisingLabel: false,
+      disclaimerText: null,
+      claims: [{ text: 'Первый абзац.', type: 'fact', factIds: ['F1'], start: 0, end: 12 }],
+      checks: [
+        {
+          id: 'numbers_must_map_to_facts',
+          severity: 'block',
+          message: '«42» не найдено в фактах',
+          start: 0,
+          end: 2,
+          excerpt: '42',
+        },
+      ],
+      styleVersion: 1,
+      promptVersion: 'sha256:test',
+      generationRunId: null,
+      createdAt: '2026-10-22T10:00:00.000Z',
+      createdBy: 'anna',
+    };
+    stubApi({
+      [`GET /api/v1/articles/${ARTICLE_ID}`]: () => json({ ...DETAIL, currentVersionNumber: 2 }),
+      [`GET /api/v1/articles/${ARTICLE_ID}/versions`]: () =>
+        json({
+          items: [
+            {
+              number: 2,
+              origin: 'generated',
+              advertisingLabel: false,
+              blockingChecks: 1,
+              createdAt: '2026-10-22T10:00:00.000Z',
+              createdBy: 'anna',
+            },
+          ],
+        }),
+      [`GET /api/v1/articles/${ARTICLE_ID}/versions/2`]: () => json(version),
+      [`POST /api/v1/articles/${ARTICLE_ID}/versions/check`]: () =>
+        json({ checks: version.checks, claims: version.claims }),
+    });
+
+    renderAt(`/articles/${ARTICLE_ID}/edit`);
+
+    expect(await screen.findByRole('region', { name: 'Исходник' })).toBeTruthy();
+    expect(screen.getByRole('region', { name: 'Предпросмотр' })).toBeTruthy();
+    expect(screen.getByRole('complementary', { name: 'Проверки' })).toBeTruthy();
+    expect(await screen.findByText('«42» не найдено в фактах')).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Сохранить версию' })).toBeTruthy();
+  });
+
   it('генерация показывает стадии и вопросы модели', async () => {
     stubApi({
       [`GET /api/v1/articles/${ARTICLE_ID}`]: () =>

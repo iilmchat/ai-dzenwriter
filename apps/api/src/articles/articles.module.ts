@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { CatalogModule } from '../catalog/catalog.module';
+import { ChecksModule } from '../checks/checks.module';
 import { DatabaseModule } from '../database/database.module';
 import { DatabaseService } from '../database/database.service';
 import { FactsModule } from '../facts/facts.module';
@@ -9,7 +10,7 @@ import { ArticlesService } from './articles.service';
 import { ARTICLES_REPOSITORY } from './articles.repository';
 
 @Module({
-  imports: [DatabaseModule, CatalogModule, FactsModule],
+  imports: [DatabaseModule, CatalogModule, FactsModule, ChecksModule],
   controllers: [ArticlesController],
   providers: [
     ArticlesService,

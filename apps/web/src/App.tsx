@@ -1,6 +1,7 @@
 import { Navigate, Route, Routes } from 'react-router';
 import { ArticlePage } from './pages/ArticlePage';
 import { BoardPage } from './pages/BoardPage';
+import { EditorPage } from './pages/EditorPage';
 import { FactsPage } from './pages/FactsPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProductsPage } from './pages/ProductsPage';
@@ -24,6 +25,7 @@ export function App() {
         >
           <Route index element={<BoardPage />} />
           <Route path="articles/:id" element={<ArticlePage />} />
+          <Route path="articles/:id/edit" element={<EditorPage />} />
           <Route path="facts" element={<FactsPage />} />
           <Route path="products" element={<ProductsPage />} />
           <Route path="styles" element={<StylesPage />} />

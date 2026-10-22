@@ -27,3 +27,114 @@ body {
   color: var(--md-sys-color-on-surface);
   font-family: var(--font-sans);
 }
+
+/* Редактор: предпросмотр в духе Дзена — колонка 680 px, текст 17/28. */
+.dz-preview {
+  overflow: auto;
+  max-height: 560px;
+  border-radius: 12px;
+  background: var(--md-sys-color-surface-container-lowest);
+  padding: 24px 16px;
+}
+
+.dz-preview__body {
+  max-width: 680px;
+  margin: 0 auto;
+  font-size: 17px;
+  line-height: 28px;
+}
+
+.dz-preview__body h1,
+.dz-preview__title {
+  font-family: var(--font-display);
+  font-size: 26px;
+  line-height: 34px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.dz-preview__body h2 {
+  font-size: 20px;
+  line-height: 28px;
+  margin: 24px 0 8px;
+}
+
+.dz-preview__body h3 {
+  font-size: 18px;
+  line-height: 26px;
+  margin: 20px 0 8px;
+}
+
+.dz-preview__body p {
+  margin: 0 0 16px;
+}
+
+/* Непроверенные фрагменты: блокирующие волной, остальные точкой. */
+.dz-flag {
+  text-underline-offset: 4px;
+}
+
+.dz-flag--block {
+  text-decoration: underline wavy var(--md-sys-color-error);
+}
+
+.dz-flag--warn {
+  text-decoration: underline dotted var(--md-sys-color-primary);
+}
+
+.dz-flag--info {
+  text-decoration: underline dotted var(--md-sys-color-on-surface-variant);
+}
+
+/* Сравнение версий: старая строка зачёркнута, новая подсвечена. */
+.dz-diff--old {
+  text-decoration: line-through;
+  color: var(--md-sys-color-on-surface-variant);
+}
+
+.dz-diff--new {
+  background: var(--md-sys-color-secondary-container);
+  color: var(--md-sys-color-on-secondary-container);
+  border-radius: 6px;
+  padding: 0 4px;
+}
+
+/* Редактор CodeMirror: цвета из ролей Material 3. */
+.cm-editor {
+  height: 100%;
+  min-height: 380px;
+  font-size: 15px;
+  line-height: 24px;
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface);
+}
+
+.cm-editor .cm-content {
+  padding: 12px;
+  font-family: 'JetBrains Mono', ui-monospace, 'Cascadia Code', monospace;
+}
+
+.cm-editor .cm-gutters {
+  background: var(--md-sys-color-surface-container-lowest);
+  color: var(--md-sys-color-on-surface-variant);
+  border-right: 1px solid var(--md-sys-color-outline-variant);
+}
+
+.cm-editor .cm-activeLine {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+}
+
+.cm-editor .cm-activeLineGutter {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 8%, transparent);
+}
+
+.cm-editor .cm-selectionBackground,
+.cm-editor.cm-focused .cm-selectionBackground {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 24%, transparent);
+}
+
+/* Подсветка фрагмента, к которому перешли по проверке. */
+.cm-editor__highlight {
+  background: color-mix(in srgb, var(--md-sys-color-primary) 28%, transparent);
+  border-radius: 3px;
+}

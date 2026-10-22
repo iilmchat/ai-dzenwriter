@@ -1,10 +1,11 @@
-import type { ArticleDetail, ArticleItem } from '@dzenwriter/shared';
+import type { ArticleDetail, ArticleItem, VersionDetail } from '@dzenwriter/shared';
 import { countBlockingChecks } from './article-rules';
 import type {
   ArticleView,
   LinkedFactRecord,
   PublicationRecord,
   ReviewRecord,
+  VersionContent,
   VersionRecord,
 } from './articles.repository';
 
@@ -38,6 +39,29 @@ export function toVersionSummary(record: VersionRecord): ArticleDetail['versions
     origin: record.origin,
     advertisingLabel: record.advertisingLabel,
     blockingChecks: countBlockingChecks(record.checks),
+    createdAt: record.createdAt.toISOString(),
+    createdBy: record.createdBy.login,
+  };
+}
+
+// Полная версия для редактора: текст, метаданные, утверждения и проверки.
+export function toVersionDetail(record: VersionContent): VersionDetail {
+  return {
+    number: record.number,
+    origin: record.origin,
+    title: record.title,
+    articleMarkdown: record.articleMarkdown,
+    seoTitle: record.seoTitle,
+    tags: [...record.tags],
+    description: record.description,
+    imagePrompt: record.imagePrompt,
+    advertisingLabel: record.advertisingLabel,
+    disclaimerText: record.disclaimerText,
+    claims: record.claims.map((claim) => ({ ...claim, factIds: [...claim.factIds] })),
+    checks: record.checks.map((check) => ({ ...check })),
+    styleVersion: record.styleVersion,
+    promptVersion: record.promptVersion,
+    generationRunId: record.generationRunId,
     createdAt: record.createdAt.toISOString(),
     createdBy: record.createdBy.login,
   };

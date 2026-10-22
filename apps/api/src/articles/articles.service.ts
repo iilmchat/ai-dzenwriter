@@ -14,14 +14,25 @@ import {
   type ArticleFormat,
   type ArticleListQuery,
   type ArticleListResponse,
+  type CheckVersionInput,
+  type CheckVersionResponse,
   type CreateArticleInput,
   type CreateArticleResponse,
   type GenerationAvailability,
+  type SaveVersionInput,
+  type SaveVersionResponse,
   type StyleConfig,
   type TransitionInput,
   type UpdateArticleInput,
+  type VersionCheck,
+  type VersionClaim,
+  type VersionDetail,
+  type VersionOrigin,
+  type VersionSummary,
 } from '@dzenwriter/shared';
 import { CATALOG_REPOSITORY, type CatalogRepository } from '../catalog/catalog.repository';
+import type { CheckClaim } from '../checks/check-context';
+import { ChecksService } from '../checks/checks.service';
 import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/tokens';
 import { FACTS_REPOSITORY, type FactsRepository } from '../facts/facts.repository';
@@ -46,6 +57,7 @@ import {
   toFactLink,
   toPublicationSummary,
   toReviewSummary,
+  toVersionDetail,
   toVersionSummary,
 } from './article-presenter';
 import {
@@ -54,11 +66,29 @@ import {
   type ArticlesRepository,
   type ArticleView,
 } from './articles.repository';
+import type { NewVersionRecord } from './version-writer';
 
 const LIST_LIMIT = 500;
 const VERSIONS_SHOWN = 10;
+const VERSIONS_LISTED = 50;
 const VERSION_CONFLICT =
   'Материал изменился, пока вы его смотрели. Обновите страницу и повторите действие';
+
+// Поля, из которых собирается версия. Одни и те же для сохранения, отката и пробной проверки.
+interface VersionFields {
+  readonly title: string;
+  readonly articleMarkdown: string;
+  readonly seoTitle: string;
+  readonly tags: readonly string[];
+  readonly description: string;
+  readonly imagePrompt: string;
+  readonly advertisingLabel: boolean;
+  readonly disclaimerText: string | null;
+  readonly claims: readonly CheckClaim[];
+  readonly generationRunId: string | null;
+  readonly styleVersion: number;
+  readonly promptVersion: string;
+}
 
 @Injectable()
 export class ArticlesService {
@@ -66,6 +96,7 @@ export class ArticlesService {
     @Inject(ARTICLES_REPOSITORY) private readonly repository: ArticlesRepository,
     @Inject(CATALOG_REPOSITORY) private readonly catalog: CatalogRepository,
     @Inject(FACTS_REPOSITORY) private readonly facts: FactsRepository,
+    @Inject(ChecksService) private readonly checks: ChecksService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
   ) {}
 
@@ -450,6 +481,281 @@ export class ArticlesService {
     }
     return this.detail(actor, id);
   }
+  // История версий материала.
+  async listVersions(actor: Actor, articleId: string): Promise<VersionSummary[]> {
+    await this.requireView(articleId);
+    void actor;
+    const versions = await this.repository.listVersions(articleId, VERSIONS_LISTED);
+    return versions.map(toVersionSummary);
+  }
+
+  // Полное содержимое версии: его показывает редактор.
+  async getVersion(actor: Actor, articleId: string, number: number): Promise<VersionDetail> {
+    await this.requireView(articleId);
+    void actor;
+    const version = await this.repository.findVersion(articleId, number);
+    if (!version) {
+      throw new NotFoundException('Версия не найдена');
+    }
+    return toVersionDetail(version);
+  }
+
+  // Ручное сохранение версии: текст проверяется движком проверок и сохраняется.
+  async saveVersion(
+    actor: Actor,
+    articleId: string,
+    input: SaveVersionInput,
+    now: Date,
+  ): Promise<SaveVersionResponse> {
+    const article = await this.requireView(articleId);
+    if (actor.id !== article.ownerId && actor.role !== 'admin') {
+      throw new ForbiddenException('Сохранять версию может автор материала или администратор');
+    }
+    if (!EDITABLE_CONTENT_STATUSES.has(article.status)) {
+      throw new ConflictException(
+        'Версии меняются до утверждения: сначала верните материал в черновик',
+      );
+    }
+    if (input.expectedVersion !== article.version) {
+      throw new ConflictException(VERSION_CONFLICT);
+    }
+
+    const version = await this.buildVersion(actor, article, 'manual', {
+      title: input.title,
+      articleMarkdown: input.articleMarkdown,
+      seoTitle: input.seoTitle,
+      tags: input.tags,
+      description: input.description,
+      imagePrompt: input.imagePrompt,
+      advertisingLabel: input.advertisingLabel,
+      disclaimerText: input.disclaimerText,
+      claims: input.claims.map((claim) => ({
+        text: claim.text,
+        type: claim.type,
+        factIds: claim.factIds,
+      })),
+      generationRunId: null,
+      styleVersion: this.requireStyle(article.styleId).version,
+      promptVersion: 'manual',
+    });
+
+    const number = await this.repository.withTransaction(async (tx) => {
+      const created = await tx.insertVersion(version, now);
+      await tx.insertAudit({
+        actorId: actor.id,
+        action: 'version.create',
+        entityType: 'article',
+        entityId: articleId,
+        payload: { versionNumber: created, origin: 'manual' },
+      });
+      return created;
+    });
+
+    const saved = await this.repository.findVersion(articleId, number);
+    const updated = await this.requireView(articleId);
+    return {
+      version: saved ? toVersionDetail(saved) : this.emptyVersion(number, version),
+      article: {
+        id: articleId,
+        version: updated.version,
+        currentVersionNumber: updated.currentVersionNumber,
+      },
+    };
+  }
+
+  // Откат: новая версия с текстом старой. Старая версия остаётся в истории.
+  async rollback(
+    actor: Actor,
+    articleId: string,
+    number: number,
+    now: Date,
+  ): Promise<SaveVersionResponse> {
+    const article = await this.requireView(articleId);
+    if (actor.id !== article.ownerId && actor.role !== 'admin') {
+      throw new ForbiddenException('Откатить версию может автор материала или администратор');
+    }
+    if (!EDITABLE_CONTENT_STATUSES.has(article.status)) {
+      throw new ConflictException(
+        'Версии меняются до утверждения: сначала верните материал в черновик',
+      );
+    }
+    const source = await this.repository.findVersion(articleId, number);
+    if (!source) {
+      throw new NotFoundException('Версия не найдена');
+    }
+
+    const version = await this.buildVersion(actor, article, 'rollback', {
+      title: source.title,
+      articleMarkdown: source.articleMarkdown,
+      seoTitle: source.seoTitle,
+      tags: source.tags,
+      description: source.description,
+      imagePrompt: source.imagePrompt,
+      advertisingLabel: source.advertisingLabel,
+      disclaimerText: source.disclaimerText,
+      claims: source.claims.map((claim) => ({
+        text: claim.text,
+        type: claim.type,
+        factIds: claim.factIds,
+      })),
+      generationRunId: source.generationRunId,
+      styleVersion: source.styleVersion,
+      promptVersion: source.promptVersion,
+    });
+
+    const created = await this.repository.withTransaction(async (tx) => {
+      const newNumber = await tx.insertVersion(version, now);
+      await tx.insertAudit({
+        actorId: actor.id,
+        action: 'version.rollback',
+        entityType: 'article',
+        entityId: articleId,
+        payload: { from: number, versionNumber: newNumber },
+      });
+      return newNumber;
+    });
+
+    const saved = await this.repository.findVersion(articleId, created);
+    const updated = await this.requireView(articleId);
+    return {
+      version: saved ? toVersionDetail(saved) : this.emptyVersion(created, version),
+      article: {
+        id: articleId,
+        version: updated.version,
+        currentVersionNumber: updated.currentVersionNumber,
+      },
+    };
+  }
+
+  // Пробный прогон проверок: текст проверяется, версия не создаётся.
+  async checkVersion(
+    actor: Actor,
+    articleId: string,
+    input: CheckVersionInput,
+  ): Promise<CheckVersionResponse> {
+    const article = await this.requireView(articleId);
+    if (actor.id !== article.ownerId && actor.role !== 'admin') {
+      throw new ForbiddenException('Проверять текст может автор материала или администратор');
+    }
+    const collected = await this.collectChecks(actor, article, {
+      title: input.title,
+      articleMarkdown: input.articleMarkdown,
+      seoTitle: input.seoTitle,
+      tags: input.tags,
+      description: input.description,
+      imagePrompt: input.imagePrompt,
+      advertisingLabel: input.advertisingLabel,
+      disclaimerText: input.disclaimerText,
+      claims: input.claims.map((claim) => ({
+        text: claim.text,
+        type: claim.type,
+        factIds: claim.factIds,
+      })),
+      generationRunId: null,
+      styleVersion: this.requireStyle(article.styleId).version,
+      promptVersion: 'manual',
+    });
+    return { checks: collected.checks, claims: collected.claims };
+  }
+
+  // Собирает версию: текст прогоняется через движок проверок, утверждения получают места.
+  private async buildVersion(
+    actor: Actor,
+    article: ArticleView,
+    origin: VersionOrigin,
+    fields: VersionFields,
+  ): Promise<NewVersionRecord> {
+    const collected = await this.collectChecks(actor, article, fields);
+    return {
+      articleId: article.id,
+      origin,
+      title: fields.title,
+      articleMarkdown: fields.articleMarkdown,
+      seoTitle: fields.seoTitle,
+      tags: fields.tags,
+      description: fields.description,
+      imagePrompt: fields.imagePrompt,
+      advertisingLabel: fields.advertisingLabel,
+      disclaimerText: fields.disclaimerText,
+      claims: collected.claims,
+      checks: collected.checks,
+      styleVersion: fields.styleVersion,
+      promptVersion: fields.promptVersion,
+      generationRunId: fields.generationRunId,
+      createdBy: actor.id,
+    };
+  }
+
+  // Проверки для текста: они одинаковы для сохранения версии и для пробного прогона.
+  private async collectChecks(
+    actor: Actor,
+    article: ArticleView,
+    fields: VersionFields,
+  ): Promise<{ readonly checks: VersionCheck[]; readonly claims: VersionClaim[] }> {
+    const style = this.requireStyle(article.styleId);
+    const format = this.config.formats.formats[article.format];
+    const linked = await this.repository.listLinkedFacts(article.id);
+    const facts = linked.map((link) => ({
+      label: link.label,
+      id: link.factId,
+      type: link.type,
+      status: link.status,
+      text: link.text,
+      sourceName: link.sourceName,
+      sourceUrl: link.sourceUrl,
+      sourcePublishedAt: link.sourcePublishedAt,
+      mentionsClient: link.mentionsClient,
+      clientPermission: link.clientPermission,
+    }));
+    const factLabels = facts.filter((fact) => fact.status === 'approved').map((fact) => fact.label);
+    const productName =
+      article.productId === null
+        ? null
+        : ((await this.catalog.findProduct(article.productId))?.name ?? null);
+
+    const checks = this.checks.run({
+      style,
+      format,
+      topic: article.topic,
+      keywords: article.keywords,
+      productName,
+      facts,
+      title: fields.title,
+      seoTitle: fields.seoTitle,
+      tags: fields.tags,
+      articleMarkdown: fields.articleMarkdown,
+      advertisingLabel: fields.advertisingLabel,
+      disclaimerText: fields.disclaimerText,
+      claims: fields.claims,
+      factLabels,
+    });
+    void actor;
+
+    return { checks: [...checks.checks], claims: [...checks.claims] };
+  }
+
+  private emptyVersion(number: number, version: NewVersionRecord): VersionDetail {
+    return {
+      number,
+      origin: version.origin,
+      title: version.title,
+      articleMarkdown: version.articleMarkdown,
+      seoTitle: version.seoTitle,
+      tags: [...version.tags],
+      description: version.description,
+      imagePrompt: version.imagePrompt,
+      advertisingLabel: version.advertisingLabel,
+      disclaimerText: version.disclaimerText,
+      claims: [],
+      checks: [],
+      styleVersion: version.styleVersion,
+      promptVersion: version.promptVersion,
+      generationRunId: version.generationRunId,
+      createdAt: new Date().toISOString(),
+      createdBy: version.createdBy,
+    };
+  }
+
   // Подтверждение проверки автором. Версия неизменяема, поэтому решение
   // сохраняется новой версией с тем же текстом и обновлёнными проверками.
   async confirmCheck(

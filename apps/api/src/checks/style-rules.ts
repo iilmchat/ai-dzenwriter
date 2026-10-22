@@ -110,28 +110,28 @@ function checkClaims(context: CheckContext, severity: VersionCheck['severity']):
   const results: VersionCheck[] = [];
   for (const claim of context.input.claims) {
     if (claim.type !== 'fact') {
-      if (claim.fact_ids.length > 0) {
+      if (claim.factIds.length > 0) {
         results.push(
           check(
             'claims_need_fact_ids',
             severity,
-            `Утверждение «${truncate(claim.text)}» — ${claim.type}, но в нём указаны fact_ids`,
+            `Утверждение «${truncate(claim.text)}» — ${claim.type}, но в нём указаны factIds`,
           ),
         );
       }
       continue;
     }
-    if (claim.fact_ids.length === 0) {
+    if (claim.factIds.length === 0) {
       results.push(
         check(
           'claims_need_fact_ids',
           severity,
-          `Утверждение о факте «${truncate(claim.text)}» без fact_ids`,
+          `Утверждение о факте «${truncate(claim.text)}» без factIds`,
         ),
       );
       continue;
     }
-    const unknown = claim.fact_ids.filter((id) => !context.factLabels.has(id));
+    const unknown = claim.factIds.filter((id) => !context.factLabels.has(id));
     if (unknown.length > 0) {
       results.push(
         check(

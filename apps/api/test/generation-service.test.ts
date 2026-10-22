@@ -42,8 +42,8 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
   const articles = new InMemoryArticlesRepository(facts);
   const catalog = new InMemoryCatalog();
   const runs = new InMemoryGenerationRepository();
-  const articlesService = new ArticlesService(articles, catalog, facts, config);
   const checks = new ChecksService(config);
+  const articlesService = new ArticlesService(articles, catalog, facts, checks, config);
   const service = new GenerationService(
     runs,
     articles,

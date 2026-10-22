@@ -3,7 +3,6 @@ import type {
   FactStatus,
   FactType,
   FormatConfig,
-  ModelClaim,
   StyleConfig,
   VersionClaim,
   VersionCheck,
@@ -34,6 +33,13 @@ export interface CheckFact {
   readonly clientPermission: boolean;
 }
 
+// Утверждение в том виде, в котором его хранит версия: текст, тип и метки фактов.
+export interface CheckClaim {
+  readonly text: string;
+  readonly type: 'fact' | 'hypothesis' | 'opinion';
+  readonly factIds: readonly string[];
+}
+
 export interface CheckInput {
   readonly style: StyleConfig;
   readonly format: FormatConfig;
@@ -47,8 +53,8 @@ export interface CheckInput {
   readonly articleMarkdown: string;
   readonly advertisingLabel: boolean;
   readonly disclaimerText: string | null;
-  // Утверждения из ответа модели: их проверяет claims_need_fact_ids.
-  readonly claims: readonly ModelClaim[];
+  // Утверждения из ответа модели или из редактора: их проверяет claims_need_fact_ids.
+  readonly claims: readonly CheckClaim[];
   // Метки фактов, которые получила модель: F1, F2 и так далее.
   readonly factLabels: readonly string[];
   readonly config: ChecksConfig;
@@ -139,13 +145,13 @@ function dateFormsOf(value: string): string[] {
 }
 
 // Утверждение с его местом в тексте: так редактор сможет подсветить фрагмент.
-export function locateClaims(claims: readonly ModelClaim[], markdown: string): VersionClaim[] {
+export function locateClaims(claims: readonly CheckClaim[], markdown: string): VersionClaim[] {
   return claims.map((claim) => {
     const position = findText(markdown, claim.text);
     return {
       text: claim.text,
       type: claim.type,
-      factIds: [...claim.fact_ids],
+      factIds: [...claim.factIds],
       ...(position === null ? {} : { start: position.start, end: position.end }),
     };
   });
