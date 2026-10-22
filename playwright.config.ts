@@ -26,7 +26,13 @@ export default defineConfig({
     {
       command: 'pnpm --filter @dzenwriter/api start',
       url: `http://127.0.0.1:${apiPort}/ready`,
-      env: { API_PORT: String(apiPort) },
+      // Вход через GitHub в e2e выключен: проверяем экран ошибки без обращения к GitHub.
+      env: {
+        API_PORT: String(apiPort),
+        WEB_ORIGIN: webUrl,
+        GITHUB_CLIENT_ID: '',
+        GITHUB_CLIENT_SECRET: '',
+      },
       reuseExistingServer: !isCi,
       timeout: 120_000,
     },

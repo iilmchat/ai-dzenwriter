@@ -365,6 +365,7 @@ prototype/            HTML-прототип
 | `POST /articles/{id}/publication`                                | Запланировать или отметить публикацию со ссылкой | author, reviewer      |
 | `GET /products`, `POST /products`, `PATCH /products/{id}`        | Справочник продуктов                             | author, admin         |
 | `GET /audit`                                                     | Журнал действий                                  | admin                 |
+| `GET /users`, `PATCH /users/{id}`                                | Список, роль и отключение (отзывает сессии)      | admin                 |
 
 ---
 

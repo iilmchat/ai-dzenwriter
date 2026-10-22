@@ -9,7 +9,7 @@
 
 Внутренний инструмент IIRuChating для планирования, генерации, проверки и отслеживания статей для Яндекс Дзен.
 
-**Статус:** E1 Foundations выполнен: монорепозиторий, база, API, веб, Docker и CI. Дальше — авторизация (E2). Подробнее — [docs/04-implementation-status.md](docs/04-implementation-status.md).
+**Статус:** E1 и E2 выполнены: монорепозиторий, база, API, веб, Docker, CI, вход через GitHub и роли. Дальше — материалы и доска (E3). Подробнее — [docs/04-implementation-status.md](docs/04-implementation-status.md).
 
 **Фокус v1:** ИИ — агенты, LLM-системы и их внедрение, новости индустрии, продукты и опыт IIRuChating.
 
@@ -58,6 +58,17 @@ docker compose up -d --build --wait
 
 Остановить: `docker compose down`. Полный сброс вместе с данными: `docker compose down --volumes`.
 
+### Вход через GitHub
+
+Вход работает после регистрации OAuth App в организации `iilmchat` (Developer settings → OAuth Apps → New OAuth App):
+
+- **Homepage URL:** адрес приложения, он же `WEB_ORIGIN`, например `http://localhost:5173`.
+- **Authorization callback URL:** `WEB_ORIGIN` и путь `/api/v1/auth/github/callback`, например `http://localhost:5173/api/v1/auth/github/callback`.
+
+Client ID и Client secret запишите в `.env` как `GITHUB_CLIENT_ID` и `GITHUB_CLIENT_SECRET`. В `ADMIN_GITHUB_LOGINS` укажите свой логин GitHub: он станет первым администратором. Без секретов сервис работает, а вход показывает понятное сообщение.
+
+Открывайте приложение по адресу из `WEB_ORIGIN` (например, `localhost`, а не `127.0.0.1`). Изменяющие запросы с другого источника отклоняются, и выход в этом случае не сработает.
+
 ### Команды
 
 | Команда                                            | Что делает                                                                              |
@@ -72,7 +83,7 @@ docker compose up -d --build --wait
 
 ## Переменные окружения
 
-Все переменные описаны в [`.env.example`](.env.example). Файл `.env` не коммитится, секреты в репозиторий не кладём. В E2 и E6 появятся `GITHUB_CLIENT_SECRET` и `LLM_API_KEY`.
+Все переменные описаны в [`.env.example`](.env.example). Файл `.env` не коммитится, секреты в репозиторий не кладём. Вход через GitHub использует `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_ORG` и `ADMIN_GITHUB_LOGINS`. Ключ LLM (`LLM_API_KEY`) появится в E6.
 
 Переменные проверяются при старте. Если значение неверно, API не запускается и называет переменную в сообщении.
 
@@ -80,8 +91,8 @@ docker compose up -d --build --wait
 
 ```text
 apps/
-  api/           NestJS API: конфигурация, здоровье, ошибки, логи
-  web/           React и Vite: страница состояния сервиса
+  api/           NestJS API: конфигурация, здоровье, вход, роли, ошибки, логи
+  web/           React и Vite: вход и страница состояния сервиса
 packages/
   db/            схема Drizzle, миграции, демо-данные
   shared/        константы, Zod-схемы конфигурации и контракты API

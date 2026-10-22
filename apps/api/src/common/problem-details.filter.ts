@@ -37,7 +37,7 @@ export class ProblemDetailsFilter implements ExceptionFilter {
         status,
         detail:
           status < 500 && exception instanceof HttpException ? detailOf(exception) : undefined,
-        instance: req.originalUrl,
+        instance: req.originalUrl.split('?')[0],
         requestId: req.id,
       });
   }

@@ -1,5 +1,6 @@
 import { RequestMethod, type INestApplication } from '@nestjs/common';
 import helmet from 'helmet';
+import type { IncomingMessage } from 'node:http';
 import type { Logger } from 'pino';
 import pinoHttp from 'pino-http';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
@@ -16,6 +17,14 @@ export function configureApp(app: INestApplication, env: Env, logger: Logger): v
       genReqId: genRequestId,
       autoLogging: {
         ignore: (req) => SILENT_PATHS.has(req.url?.split('?')[0] ?? ''),
+      },
+      // В строке запроса бывают одноразовый code OAuth и state: в логах остаётся только путь.
+      serializers: {
+        req: (req: IncomingMessage & { id?: unknown }) => ({
+          id: req.id,
+          method: req.method,
+          url: req.url?.split('?')[0],
+        }),
       },
     }),
   );

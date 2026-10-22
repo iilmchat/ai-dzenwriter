@@ -2,9 +2,14 @@ import { useEffect, useState } from 'react';
 import logoIcon from '../../../design/brand/logo-icon.svg?url';
 import logoIconWhite from '../../../design/brand/logo-icon-white.svg?url';
 import { fetchReadiness, type ReadinessState } from './api/readiness';
+import { fetchSession, logout, type SessionState } from './api/session';
+import { AuthSection } from './features/auth/AuthSection';
 
 export function App() {
   const [state, setState] = useState<ReadinessState>({ phase: 'loading' });
+  const [session, setSession] = useState<SessionState>({ phase: 'loading' });
+  // Код ошибки входа приходит в адресе после редиректа с сервера. Адрес очищаем, как только его прочитали.
+  const [authError, setAuthError] = useState(readLoginError);
 
   useEffect(() => {
     let active = true;
@@ -17,6 +22,30 @@ export function App() {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    let active = true;
+    fetchSession().then((next) => {
+      if (active) {
+        setSession(next);
+      }
+    });
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (readLoginError()) {
+      window.history.replaceState(null, '', '/');
+    }
+  }, []);
+
+  async function handleLogout(): Promise<void> {
+    await logout();
+    setAuthError(undefined);
+    setSession({ phase: 'anonymous' });
+  }
 
   return (
     <main className="mx-auto flex min-h-screen max-w-2xl flex-col gap-8 px-6 py-12">
@@ -32,6 +61,8 @@ export function App() {
           </p>
         </div>
       </header>
+
+      <AuthSection session={session} error={authError} onLogout={handleLogout} />
 
       <section
         aria-labelledby="status-title"
@@ -51,6 +82,10 @@ export function App() {
       </footer>
     </main>
   );
+}
+
+function readLoginError(): string | undefined {
+  return new URLSearchParams(window.location.search).get('error') ?? undefined;
 }
 
 function statusText(state: ReadinessState): string {

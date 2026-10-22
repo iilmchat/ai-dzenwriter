@@ -3,8 +3,9 @@ import { NestFactory } from '@nestjs/core';
 import { AppModule } from './app.module';
 import { configureApp } from './bootstrap';
 import type { AppConfig } from './config/app-config';
+import type { AuthConfig } from './config/auth-config';
 import { parseEnv } from './config/env';
-import { APP_CONFIG } from './config/tokens';
+import { APP_CONFIG, AUTH_CONFIG } from './config/tokens';
 import { createLogger } from './logging/logger';
 import { PinoNestLogger } from './logging/nest-logger';
 
@@ -23,6 +24,9 @@ async function bootstrap(): Promise<void> {
     },
     'Конфигурация загружена',
   );
+  if (!app.get<AuthConfig>(AUTH_CONFIG).github) {
+    logger.warn('GitHub OAuth не настроен: вход недоступен, остальные маршруты работают');
+  }
 
   await app.listen(env.API_PORT, '0.0.0.0');
   logger.info({ port: env.API_PORT, env: env.NODE_ENV }, 'API запущен');
