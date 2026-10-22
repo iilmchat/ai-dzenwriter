@@ -20,7 +20,9 @@ export class InMemoryGenerationRepository implements GenerationRepository {
   readonly versions: NewVersion[] = [];
   readonly versionNumbers = new Map<string, number>();
   readonly audit: AuditRecord[] = [];
-  readonly clock = new Date('2026-10-22T10:00:00Z');
+  // Время запуска — настоящее: суточные лимиты считаются относительно текущих суток,
+  // и фиксированная дата ломала бы тест после полуночи по Москве.
+  readonly clock = new Date();
 
   async insertRun(run: NewGenerationRun): Promise<string> {
     const id = randomUUID();

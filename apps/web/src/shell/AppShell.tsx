@@ -27,6 +27,9 @@ export function AppShell() {
             <NavLink to="/products" className={navClass}>
               Продукты
             </NavLink>
+            <NavLink to="/publications" className={navClass}>
+              Публикации
+            </NavLink>
             <NavLink to="/styles" className={navClass}>
               Стили и форматы
             </NavLink>

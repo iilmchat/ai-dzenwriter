@@ -9,6 +9,7 @@ import { useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { fetchArticle } from '../api/articles';
 import { errorMessage } from '../api/client';
+import { exportUrl } from '../api/publications';
 import { ArticleEditForm } from '../features/article/ArticleEditForm';
 import { ArticleFactsPanel } from '../features/article/ArticleFactsPanel';
 import { ChecksPanel } from '../features/article/ChecksPanel';
@@ -17,7 +18,7 @@ import { TransitionForm } from '../features/article/TransitionForm';
 import { useCatalog } from '../features/catalog/useCatalog';
 import { formatDate, formatDateTime } from '../lib/format';
 import { useSession } from '../session/SessionContext';
-import { FOCUS_RING, PANEL_CLASS } from '../shared/ui/classes';
+import { BUTTON_SECONDARY, FOCUS_RING, PANEL_CLASS } from '../shared/ui/classes';
 import { Notice } from '../shared/ui/Notice';
 
 type ArticleState =
@@ -219,6 +220,10 @@ function ReviewsPanel({ article }: { readonly article: ArticleDetail }) {
 }
 
 function PublicationsPanel({ article }: { readonly article: ArticleDetail }) {
+  const canExport =
+    article.status === 'approved' ||
+    article.status === 'scheduled' ||
+    article.status === 'published';
   return (
     <section aria-labelledby="publications-title" className={PANEL_CLASS}>
       <h2 id="publications-title" className="font-display text-lg font-bold">
@@ -243,6 +248,17 @@ function PublicationsPanel({ article }: { readonly article: ArticleDetail }) {
             </li>
           ))}
         </ul>
+      )}
+      {canExport ? (
+        <div className="mt-4">
+          <a href={exportUrl(article.id)} className={BUTTON_SECONDARY} download>
+            Скачать пакет для Дзена
+          </a>
+        </div>
+      ) : (
+        <p className="mt-4 text-sm text-on-surface-variant">
+          Пакет готовится после утверждения материала.
+        </p>
       )}
     </section>
   );

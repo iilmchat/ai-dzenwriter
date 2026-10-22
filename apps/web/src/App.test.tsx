@@ -428,6 +428,51 @@ describe('приложение', () => {
     expect(posted).toEqual([{ comment: 'Это номер пункта правил.' }]);
   });
 
+  it('публикации показывают материалы, пакет и отметку публикации', async () => {
+    const posted: unknown[] = [];
+    stubApi({
+      'GET /api/v1/publications': () =>
+        json({
+          items: [
+            {
+              articleId: ARTICLE_ID,
+              topic: 'Агенты на длинных задачах',
+              styleName: 'Новости индустрии',
+              status: 'approved',
+              version: 3,
+              currentVersionNumber: 2,
+              plannedAt: '2026-11-01T09:00:00.000Z',
+              publishedAt: null,
+              externalUrl: null,
+              canExport: true,
+            },
+          ],
+        }),
+      [`POST /api/v1/articles/${ARTICLE_ID}/transitions`]: (init) => {
+        posted.push(JSON.parse(String(init?.body)));
+        return json(DETAIL);
+      },
+    });
+
+    renderAt('/publications');
+
+    expect(await screen.findByText('Агенты на длинных задачах')).toBeTruthy();
+    const download = screen.getByRole('link', { name: 'Скачать пакет' });
+    expect(download.getAttribute('href')).toBe(`/api/v1/publications/${ARTICLE_ID}/export`);
+
+    fireEvent.change(screen.getByLabelText('Ссылка на статью в Дзене'), {
+      target: { value: 'https://dzen.ru/a/demo' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Отметить публикацию' }));
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({
+      to: 'published',
+      expectedVersion: 3,
+      externalUrl: 'https://dzen.ru/a/demo',
+    });
+  });
+
   it('редактор показывает исходник, предпросмотр и панель проверок', async () => {
     const version = {
       number: 2,

@@ -5,6 +5,7 @@ import { EditorPage } from './pages/EditorPage';
 import { FactsPage } from './pages/FactsPage';
 import { LoginPage } from './pages/LoginPage';
 import { ProductsPage } from './pages/ProductsPage';
+import { PublicationsPage } from './pages/PublicationsPage';
 import { StylesPage } from './pages/StylesPage';
 import { UsersPage } from './pages/UsersPage';
 import { SessionProvider } from './session/SessionContext';
@@ -28,6 +29,7 @@ export function App() {
           <Route path="articles/:id/edit" element={<EditorPage />} />
           <Route path="facts" element={<FactsPage />} />
           <Route path="products" element={<ProductsPage />} />
+          <Route path="publications" element={<PublicationsPage />} />
           <Route path="styles" element={<StylesPage />} />
           <Route
             path="admin/users"

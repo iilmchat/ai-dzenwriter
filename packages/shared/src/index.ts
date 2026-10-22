@@ -9,5 +9,6 @@ export * from './auth';
 export * from './articles';
 export * from './facts';
 export * from './generation';
+export * from './publications';
 export * from './labels';
 export * from './products';

@@ -373,6 +373,7 @@ prototype/            HTML-прототип
 | `POST /articles/{id}/versions/{n}/rollback`                         | Откат: новая версия с текстом старой                                                | author                                           |
 | `POST /articles/{id}/reviews`                                       | Утвердить или запросить правки                                                      | reviewer                                         |
 | `GET /articles/{id}/export`                                         | Пакет для Дзена (zip)                                                               | author                                           |
+| `GET /publications`                                                 | Материалы в публикации: статус, плановая дата, ссылка                               | любая                                            |
 | `POST /articles/{id}/publication`                                   | Запланировать или отметить публикацию со ссылкой                                    | author, reviewer                                 |
 | `GET /products`, `POST /products`, `PATCH /products/{id}`           | Справочник продуктов (архивирование без удаления)                                   | чтение — все, запись — администратор             |
 | `GET /audit`                                                        | Журнал действий                                                                     | admin                                            |

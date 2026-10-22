@@ -8,6 +8,7 @@ import { FactsModule } from './facts/facts.module';
 import { GenerationModule } from './generation/generation.module';
 import { HealthModule } from './health/health.module';
 import { IdentityModule } from './identity/identity.module';
+import { PublicationsModule } from './publications/publications.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -21,6 +22,7 @@ import { UsersModule } from './users/users.module';
     FactsModule,
     ArticlesModule,
     GenerationModule,
+    PublicationsModule,
     HealthModule,
   ],
 })
