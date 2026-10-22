@@ -44,7 +44,7 @@
 ## Что не сделано (сознательно)
 
 - Аутентификация и роли: E2.
-- Шрифты Inter, Manrope и Montserrat грузятся из Google Fonts. Для продакшена нужны локальные `.woff2` (см. `FONTS.md` брендкита), переход — в E2.
+- Шрифты Inter и Manrope грузятся из Google Fonts (`apps/web/index.html`). Для продакшена нужны локальные `.woff2` (см. `FONTS.md` в ai-brand), переход — в E2.
 - Образ `api` ставит pnpm через `npm install -g`, на медленной сети это долго. Оптимизация: corepack или кэш слоя.
 - Движок проверок (E7) ещё не реализован. Ключи `checks` валидируются по списку `STYLE_CHECK_IDS` из `packages/shared`.
 - Юридические пункты из [06-legal-and-safety](06-legal-and-safety.md) не закрыты.
