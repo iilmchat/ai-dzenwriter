@@ -10,6 +10,13 @@ updates:
     groups:
       dev-dependencies:
         dependency-type: development
+    ignore:
+      # TypeScript остаётся на линейке 5.x, см. ADR-0001.
+      - dependency-name: typescript
+        update-types: ['version-update:semver-major']
+      # Типы Node совпадают с рантаймом из .nvmrc.
+      - dependency-name: '@types/node'
+        update-types: ['version-update:semver-major']
 
   - package-ecosystem: github-actions
     directory: /
@@ -20,3 +27,7 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    ignore:
+      # Новая версия Node переходит только по решению, см. .nvmrc и Dockerfile.
+      - dependency-name: node
+        update-types: ['version-update:semver-major']
