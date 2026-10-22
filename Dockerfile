@@ -2,7 +2,7 @@
 
 # Образы api и web собираются из одного монорепозитория. Зависимости ставятся
 # один раз по lock-файлу, а итоговые образы содержат только нужное для запуска.
-FROM node:24-alpine AS base
+FROM node:25-alpine AS base
 RUN npm install --global pnpm@12.11.2
 ENV CI=true
 WORKDIR /app
@@ -20,7 +20,7 @@ COPY . .
 RUN pnpm --filter "@dzenwriter/api..." --filter "@dzenwriter/web..." build
 RUN pnpm --config.inject-workspace-packages=true --filter @dzenwriter/api deploy --prod /out/api
 
-FROM node:24-alpine AS api
+FROM node:25-alpine AS api
 ENV NODE_ENV=production
 WORKDIR /app
 COPY --from=build --chown=node:node /out/api ./
