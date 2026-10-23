@@ -4,12 +4,14 @@ import {
   CONTENT_EDITABLE_STATUSES,
   TONE_LABELS,
   type ArticleDetail,
+  type VersionDetail,
 } from '@dzenwriter/shared';
-import { useEffect, useState } from 'react';
+import { lazy, Suspense, useEffect, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { fetchArticle } from '../api/articles';
 import { errorMessage } from '../api/client';
 import { exportUrl } from '../api/publications';
+import { fetchVersion } from '../api/versions';
 import { ArticleEditForm } from '../features/article/ArticleEditForm';
 import { ArticleFactsPanel } from '../features/article/ArticleFactsPanel';
 import { ChecksPanel } from '../features/article/ChecksPanel';
@@ -21,9 +23,23 @@ import { useSession } from '../session/SessionContext';
 import { BUTTON_SECONDARY, FOCUS_RING, PANEL_CLASS } from '../shared/ui/classes';
 import { Notice } from '../shared/ui/Notice';
 
+// Текст версии тянет react-markdown. Отдельный чанк не грузит его тем, кто открыл
+// доску или другой раздел, и не раздувает стартовый бандл.
+const ArticleTextView = lazy(() =>
+  import('../features/article/ArticleTextView').then((module) => ({
+    default: module.ArticleTextView,
+  })),
+);
+
 type ArticleState =
   | { readonly phase: 'loading' }
   | { readonly phase: 'ready'; readonly article: ArticleDetail }
+  | { readonly phase: 'error'; readonly message: string };
+
+type VersionState =
+  | { readonly phase: 'idle' }
+  | { readonly phase: 'loading' }
+  | { readonly phase: 'ready'; readonly version: VersionDetail }
   | { readonly phase: 'error'; readonly message: string };
 
 const ORIGIN_LABELS: Record<string, string> = { generated: 'генерация', manual: 'ручная правка' };
@@ -41,6 +57,9 @@ export function ArticlePage() {
   const { state: session } = useSession();
   const catalog = useCatalog();
   const [state, setState] = useState<ArticleState>({ phase: 'loading' });
+  const [versionState, setVersionState] = useState<VersionState>({ phase: 'idle' });
+  const currentVersionNumber =
+    state.phase === 'ready' && state.article.id === id ? state.article.currentVersionNumber : null;
 
   useEffect(() => {
     let active = true;
@@ -60,6 +79,31 @@ export function ArticlePage() {
       active = false;
     };
   }, [id]);
+
+  // Текущую версию грузим отдельно: карточка материала приходит без текста статьи.
+  useEffect(() => {
+    if (currentVersionNumber === null) {
+      setVersionState({ phase: 'idle' });
+      return;
+    }
+    let active = true;
+    setVersionState({ phase: 'loading' });
+    fetchVersion(id, currentVersionNumber).then(
+      (version) => {
+        if (active) {
+          setVersionState({ phase: 'ready', version });
+        }
+      },
+      (cause: unknown) => {
+        if (active) {
+          setVersionState({ phase: 'error', message: errorMessage(cause) });
+        }
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [id, currentVersionNumber]);
 
   if (state.phase === 'loading') {
     return <Notice>Загружаем материал…</Notice>;
@@ -102,15 +146,31 @@ export function ArticlePage() {
           {article.plannedAt ? `, плановая дата: ${formatDate(article.plannedAt)}` : ''}, версия{' '}
           {article.version}
         </p>
-        {canEdit ? (
-          <Link
-            to={`/articles/${article.id}/edit`}
-            className={`mt-1 w-fit text-sm font-medium hover:underline ${FOCUS_RING}`}
-          >
-            Редактировать текст
-          </Link>
-        ) : null}
+        <div className="mt-1 flex flex-wrap gap-4 text-sm font-medium">
+          {article.currentVersionNumber !== null ? (
+            <a href="#article-text" className={`w-fit hover:underline ${FOCUS_RING}`}>
+              Читать текст
+            </a>
+          ) : null}
+          {canEdit ? (
+            <Link
+              to={`/articles/${article.id}/edit`}
+              className={`w-fit hover:underline ${FOCUS_RING}`}
+            >
+              Редактировать текст
+            </Link>
+          ) : null}
+        </div>
       </header>
+
+      <Suspense fallback={<Notice>Загружаем текст материала…</Notice>}>
+        <ArticleTextView
+          article={article}
+          version={versionState.phase === 'ready' ? versionState.version : null}
+          loading={versionState.phase === 'loading'}
+          error={versionState.phase === 'error' ? versionState.message : null}
+        />
+      </Suspense>
 
       <div className="grid gap-6 lg:grid-cols-2">
         <RequirementsPanel article={article} />

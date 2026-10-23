@@ -3,7 +3,7 @@
 **Статус:** E1–E11 выполнены в технической части, см. [04-implementation-status](04-implementation-status.md). Юридические пункты E11 открыты и перечислены в [06-legal-and-safety](06-legal-and-safety.md). US-3.4 (счётчик блокирующих проверок на карточке) сделан в E7  
 **Дата:** 23.10.2026  
 **Срок:** 6–8 недель для двух разработчиков (оценка, см. 00-design, раздел 16)  
-**Связанные документы:** [00-design](00-design.md), [01-writing-styles](01-writing-styles.md), [02-data-model](02-data-model.md), [06-legal-and-safety](06-legal-and-safety.md)
+**Связанные документы:** [00-design](00-design.md), [01-writing-styles](01-writing-styles.md), [02-data-model](02-data-model.md), [06-legal-and-safety](06-legal-and-safety.md), [08-product-backlog](08-product-backlog.md)
 
 ---
 

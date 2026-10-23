@@ -37,6 +37,11 @@ body {
   padding: 24px 16px;
 }
 
+/* На странице ревью показываем весь текст: прокрутка остаётся у страницы. */
+.dz-preview--full {
+  max-height: none;
+}
+
 .dz-preview__body {
   max-width: 680px;
   margin: 0 auto;

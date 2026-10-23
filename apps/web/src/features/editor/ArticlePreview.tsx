@@ -9,6 +9,8 @@ export interface ArticlePreviewProps {
   readonly markdown: string;
   // Проверки текущего текста: их фрагменты подчёркиваются в предпросмотре.
   readonly checks: readonly VersionCheck[];
+  // На странице ревью текст показываем целиком, а не в прокручиваемом окне редактора.
+  readonly full?: boolean;
 }
 
 interface HastNode {
@@ -32,7 +34,7 @@ const FLAG_CLASS: Record<string, string> = {
 };
 
 // Предпросмотр в духе Дзена: текст 17/28 px, колонка 680 px.
-export function ArticlePreview({ title, markdown, checks }: ArticlePreviewProps) {
+export function ArticlePreview({ title, markdown, checks, full = false }: ArticlePreviewProps) {
   const flags = useMemo(
     () =>
       checks
@@ -42,7 +44,7 @@ export function ArticlePreview({ title, markdown, checks }: ArticlePreviewProps)
   );
 
   return (
-    <div className="dz-preview">
+    <div className={`dz-preview${full ? ' dz-preview--full' : ''}`}>
       <div className="dz-preview__body">
         <p className="dz-preview__title">{title}</p>
         <ReactMarkdown

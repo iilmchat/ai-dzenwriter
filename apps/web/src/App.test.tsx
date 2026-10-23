@@ -151,6 +151,30 @@ const DETAIL = {
   },
 };
 
+// Полная версия в формате API: страница материала и редактор грузят её отдельно.
+function versionDetail(overrides: Record<string, unknown> = {}) {
+  return {
+    number: 1,
+    origin: 'manual',
+    title: 'Текст статьи',
+    articleMarkdown: 'Текст статьи.',
+    seoTitle: '',
+    tags: [],
+    description: '',
+    imagePrompt: '',
+    advertisingLabel: false,
+    disclaimerText: null,
+    claims: [],
+    checks: [],
+    styleVersion: 1,
+    promptVersion: 'sha256:test',
+    generationRunId: null,
+    createdAt: '2026-10-22T10:00:00.000Z',
+    createdBy: 'anna',
+    ...overrides,
+  };
+}
+
 function json(body: unknown, status = 200): Response {
   return new Response(JSON.stringify(body), {
     status,
@@ -396,6 +420,15 @@ describe('приложение', () => {
     };
     stubApi({
       [`GET /api/v1/articles/${ARTICLE_ID}`]: () => json(withChecks),
+      [`GET /api/v1/articles/${ARTICLE_ID}/versions/3`]: () =>
+        json(
+          versionDetail({
+            number: 3,
+            title: 'Текст с проверкой',
+            articleMarkdown: 'Текст с числом 42.',
+            checks: withChecks.checks,
+          }),
+        ),
       [`POST /api/v1/articles/${ARTICLE_ID}/versions/3/checks/0/confirm`]: (init) => {
         posted.push(JSON.parse(String(init?.body)));
         return json({
@@ -426,6 +459,62 @@ describe('приложение', () => {
       expect(screen.getByText('Комментарий автора: Это номер пункта правил.')).toBeTruthy(),
     );
     expect(posted).toEqual([{ comment: 'Это номер пункта правил.' }]);
+  });
+
+  it('ревьюер читает текст, утверждения и привязанные факты', async () => {
+    const version = versionDetail({
+      number: 2,
+      origin: 'generated',
+      title: 'Как агенты работают на длинных задачах',
+      articleMarkdown: 'Текст статьи для ревью.',
+      claims: [
+        {
+          text: 'Точность ответов выросла на 20 %',
+          type: 'fact',
+          factIds: ['F1'],
+        },
+      ],
+    });
+    const fact = {
+      factId: FACT_ID,
+      label: 'F1',
+      type: 'company_fact',
+      status: 'approved',
+      text: 'Команда измеряет точность ответов на эталонном наборе',
+      sourceName: null,
+      sourceUrl: null,
+      sourcePublishedAt: null,
+    };
+    stubApi(
+      {
+        [`GET /api/v1/articles/${ARTICLE_ID}`]: () =>
+          json({
+            ...DETAIL,
+            status: 'in_review',
+            owner: AUTHOR,
+            reviewer: REVIEWER,
+            currentVersionNumber: 2,
+            facts: [fact],
+          }),
+        [`GET /api/v1/articles/${ARTICLE_ID}/versions/2`]: () => json(version),
+      },
+      REVIEWER,
+    );
+
+    renderAt(`/articles/${ARTICLE_ID}`);
+
+    expect(
+      await screen.findByRole('heading', { name: 'Текст материала' }, { timeout: 5000 }),
+    ).toBeTruthy();
+    expect(await screen.findByText('Текст статьи для ревью.')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Утверждения' })).toBeTruthy();
+    expect(screen.getByText('Точность ответов выросла на 20 %')).toBeTruthy();
+    expect(screen.getByText(/Одобрен: Команда измеряет точность/)).toBeTruthy();
+    expect(screen.getByText('Метаданные публикации')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Читать текст' }).getAttribute('href')).toBe(
+      '#article-text',
+    );
+    expect(screen.queryByRole('link', { name: 'Редактировать текст' })).toBeNull();
   });
 
   it('метрики показывают сравнение материалов и принимают ручной ввод', async () => {
