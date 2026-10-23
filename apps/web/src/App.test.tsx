@@ -1006,13 +1006,41 @@ describe('приложение', () => {
     );
   });
 
-  it('генерация показывает стадии и вопросы модели', async () => {
+  it('генерация показывает стадии и вопросы модели, из вопроса можно добавить факт', async () => {
+    const postedFact: unknown[] = [];
+    const postedAttach: unknown[] = [];
+    const createdFact = factItem({
+      type: 'news_source',
+      status: 'draft',
+      text: 'Новый источник',
+      sourceName: 'Новый источник',
+      sourceUrl: 'https://example.com/news/2',
+      sourcePublishedAt: '2026-10-20',
+    });
+    const factLink = {
+      factId: FACT_ID,
+      label: 'F1',
+      type: 'news_source',
+      status: 'draft',
+      text: 'Новый источник',
+      sourceName: 'Новый источник',
+      sourceUrl: 'https://example.com/news/2',
+      sourcePublishedAt: '2026-10-20',
+    };
     stubApi({
       [`GET /api/v1/articles/${ARTICLE_ID}`]: () =>
         json({
           ...DETAIL,
           generation: { allowed: true, reason: null, outOfFocus: false, confirmed: false },
         }),
+      'POST /api/v1/facts': (init) => {
+        postedFact.push(JSON.parse(String(init?.body)));
+        return json(createdFact);
+      },
+      [`POST /api/v1/articles/${ARTICLE_ID}/facts`]: (init) => {
+        postedAttach.push(JSON.parse(String(init?.body)));
+        return json({ ...DETAIL, facts: [factLink] });
+      },
       [`POST /api/v1/articles/${ARTICLE_ID}/generations`]: () =>
         sse([
           {
@@ -1052,5 +1080,25 @@ describe('приложение', () => {
     expect(await screen.findByText('Какой результат вы получили?')).toBeTruthy();
     expect(screen.getByText('Сборка промпта')).toBeTruthy();
     expect(screen.getByText('Разбор ответа')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Добавить факт' }));
+    expect(await screen.findByRole('heading', { name: 'Добавить факт' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Текст факта или цитаты'), {
+      target: { value: 'Новый источник' },
+    });
+    fireEvent.change(screen.getByLabelText('Название источника'), {
+      target: { value: 'Новый источник' },
+    });
+    fireEvent.change(screen.getByLabelText('Ссылка на источник (обязательна)'), {
+      target: { value: 'https://example.com/news/2' },
+    });
+    fireEvent.change(screen.getByLabelText('Дата публикации источника (обязательна)'), {
+      target: { value: '2026-10-20' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить факт' }));
+
+    expect(await screen.findByText(/Факт «Источник новости» добавлен и привязан/)).toBeTruthy();
+    expect(postedFact[0]).toMatchObject({ type: 'news_source', text: 'Новый источник' });
+    expect(postedAttach[0]).toEqual({ factId: FACT_ID });
   });
 });

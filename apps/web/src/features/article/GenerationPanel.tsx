@@ -1,13 +1,17 @@
 import {
+  FACT_TYPE_LABELS,
   GENERATION_STAGE_LABELS,
   type ArticleDetail,
+  type FactItem,
   type GenerationResult,
   type GenerationRunSummary,
   type GenerationStage,
   type GenerationStageEvent,
+  type Product,
+  type StyleCard,
 } from '@dzenwriter/shared';
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { confirmGeneration, fetchArticle } from '../../api/articles';
+import { attachFact, confirmGeneration, fetchArticle } from '../../api/articles';
 import {
   cancelGeneration,
   fetchGenerationRuns,
@@ -15,7 +19,8 @@ import {
   type GenerationEvent,
 } from '../../api/generation';
 import { errorMessage } from '../../api/client';
-import { formatDateTime } from '../../lib/format';
+import { capitalize, formatDateTime } from '../../lib/format';
+import { AddFactDialog } from './AddFactDialog';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY, PANEL_CLASS } from '../../shared/ui/classes';
 import { Notice } from '../../shared/ui/Notice';
 
@@ -23,6 +28,8 @@ interface GenerationPanelProps {
   readonly article: ArticleDetail;
   readonly canRun: boolean;
   readonly canConfirm: boolean;
+  readonly style: StyleCard | undefined;
+  readonly products: readonly Product[];
   readonly onChanged: (article: ArticleDetail) => void;
 }
 
@@ -37,11 +44,21 @@ const RUN_STATUS_LABELS: Record<string, string> = {
 };
 
 // Панель запуска генерации: кнопка, стадии по ходу потока и история запусков материала.
-export function GenerationPanel({ article, canRun, canConfirm, onChanged }: GenerationPanelProps) {
+export function GenerationPanel({
+  article,
+  canRun,
+  canConfirm,
+  style,
+  products,
+  onChanged,
+}: GenerationPanelProps) {
   const [runs, setRuns] = useState<GenerationRunSummary[]>([]);
   const [stage, setStage] = useState<GenerationStageEvent | undefined>(undefined);
   const [result, setResult] = useState<GenerationResult | undefined>(undefined);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [factQuestion, setFactQuestion] = useState<string | undefined>(undefined);
+  const [factFeedback, setFactFeedback] = useState<string | undefined>(undefined);
+  const [factError, setFactError] = useState<string | undefined>(undefined);
   const [running, setRunning] = useState(false);
   const [runId, setRunId] = useState<string | undefined>(undefined);
   const abortRef = useRef<AbortController | undefined>(undefined);
@@ -64,6 +81,8 @@ export function GenerationPanel({ article, canRun, canConfirm, onChanged }: Gene
     setError(undefined);
     setStage(undefined);
     setResult(undefined);
+    setFactFeedback(undefined);
+    setFactError(undefined);
     const controller = new AbortController();
     abortRef.current = controller;
     let created = false;
@@ -113,6 +132,20 @@ export function GenerationPanel({ article, canRun, canConfirm, onChanged }: Gene
       onChanged(await confirmGeneration(article.id));
     } catch (cause) {
       setError(errorMessage(cause));
+    }
+  }
+
+  async function attachCreatedFact(fact: FactItem) {
+    setFactQuestion(undefined);
+    setFactError(undefined);
+    setFactFeedback(undefined);
+    try {
+      onChanged(await attachFact(article.id, fact.id));
+      setFactFeedback(
+        `Факт «${capitalize(FACT_TYPE_LABELS[fact.type])}» добавлен и привязан. После одобрения ревьюером запустите генерацию снова.`,
+      );
+    } catch (cause) {
+      setFactError(`Факт создан, но привязать не удалось: ${errorMessage(cause)}`);
     }
   }
 
@@ -183,8 +216,23 @@ export function GenerationPanel({ article, canRun, canConfirm, onChanged }: Gene
         </ol>
       ) : null}
 
-      {result !== undefined ? <RunResult result={result} /> : null}
+      {result !== undefined ? (
+        <RunResult
+          result={result}
+          onAddFact={
+            canRun
+              ? (question) => {
+                  setFactQuestion(question);
+                  setFactError(undefined);
+                  setFactFeedback(undefined);
+                }
+              : undefined
+          }
+        />
+      ) : null}
 
+      {factFeedback ? <Notice>{factFeedback}</Notice> : null}
+      {factError ? <Notice tone="error">{factError}</Notice> : null}
       {error ? (
         <div className="mt-4">
           <Notice tone="error">{error}</Notice>
@@ -210,18 +258,49 @@ export function GenerationPanel({ article, canRun, canConfirm, onChanged }: Gene
           </ul>
         )}
       </div>
+
+      {factQuestion !== undefined ? (
+        <AddFactDialog
+          article={article}
+          question={factQuestion}
+          style={style}
+          products={products}
+          onSaved={(fact) => void attachCreatedFact(fact)}
+          onCancel={() => setFactQuestion(undefined)}
+        />
+      ) : null}
     </section>
   );
 }
 
-function RunResult({ result }: { readonly result: GenerationResult }) {
+function RunResult({
+  result,
+  onAddFact,
+}: {
+  readonly result: GenerationResult;
+  readonly onAddFact?: (question: string) => void;
+}) {
   if (result.status === 'needs_input') {
     return (
       <div className="mt-4">
         <Notice>Модели не хватило фактов. Ответьте на вопросы и запустите снова.</Notice>
-        <ul className="mt-3 flex list-disc flex-col gap-1 pl-5 text-sm">
-          {result.questions.map((question) => (
-            <li key={question}>{question}</li>
+        <ul className="mt-3 flex flex-col gap-2 text-sm">
+          {result.questions.map((question, index) => (
+            <li
+              key={`${question}-${index}`}
+              className="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-outline-variant px-3 py-2"
+            >
+              <span>{question}</span>
+              {onAddFact ? (
+                <button
+                  type="button"
+                  className={BUTTON_SECONDARY}
+                  onClick={() => onAddFact(question)}
+                >
+                  Добавить факт
+                </button>
+              ) : null}
+            </li>
           ))}
         </ul>
       </div>

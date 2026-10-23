@@ -27,6 +27,10 @@ interface FactFormProps {
   readonly mode: FactFormMode;
   readonly products: readonly Product[];
   readonly initial?: FactItem;
+  // Для создания из материала: типы, которые допускает политика стиля.
+  readonly allowedTypes?: readonly FactType[];
+  readonly defaultType?: FactType;
+  readonly defaultProductId?: string;
   readonly onSaved: (fact: FactItem) => void;
   readonly onCancel: () => void;
 }
@@ -49,8 +53,25 @@ const SUBMIT_LABEL: Record<FactFormMode, string> = {
 };
 
 // Создание, правка и исправление одной формой. Проверка — теми же схемами, что на сервере.
-export function FactForm({ mode, products, initial, onSaved, onCancel }: FactFormProps) {
-  const [values, setValues] = useState<Values>(() => initialValues(initial));
+export function FactForm({
+  mode,
+  products,
+  initial,
+  allowedTypes,
+  defaultType,
+  defaultProductId,
+  onSaved,
+  onCancel,
+}: FactFormProps) {
+  const typeOptions =
+    allowedTypes !== undefined && allowedTypes.length > 0 ? allowedTypes : FACT_TYPES;
+  const initialType =
+    defaultType !== undefined && typeOptions.includes(defaultType)
+      ? defaultType
+      : (typeOptions[0] ?? 'company_fact');
+  const [values, setValues] = useState<Values>(() =>
+    initialValues(initial, initialType, defaultProductId),
+  );
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const isNews = values.type === 'news_source';
@@ -92,10 +113,10 @@ export function FactForm({ mode, products, initial, onSaved, onCancel }: FactFor
             className={INPUT_CLASS}
             value={values.type}
             onChange={(event) =>
-              update('type', parseOption(FACT_TYPES, event.target.value) || 'company_fact')
+              update('type', parseOption(typeOptions, event.target.value) || initialType)
             }
           >
-            {FACT_TYPES.map((type) => (
+            {typeOptions.map((type) => (
               <option key={type} value={type}>
                 {capitalize(FACT_TYPE_LABELS[type])}
               </option>
@@ -218,14 +239,18 @@ export function FactForm({ mode, products, initial, onSaved, onCancel }: FactFor
   );
 }
 
-function initialValues(fact: FactItem | undefined): Values {
+function initialValues(
+  fact: FactItem | undefined,
+  initialType: FactType,
+  defaultProductId: string | undefined,
+): Values {
   return {
-    type: fact?.type ?? 'company_fact',
+    type: fact?.type ?? initialType,
     text: fact?.text ?? '',
     sourceName: fact?.sourceName ?? '',
     sourceUrl: fact?.sourceUrl ?? '',
     sourcePublishedAt: fact?.sourcePublishedAt ?? '',
-    productId: fact?.productId ?? '',
+    productId: fact?.productId ?? defaultProductId ?? '',
     mentionsClient: fact?.mentionsClient ?? false,
     clientPermission: fact?.clientPermission ?? false,
   };
@@ -237,7 +262,7 @@ function toFields(values: Values): FactFields {
     sourceName: emptyToNull(values.sourceName),
     sourceUrl: emptyToNull(values.sourceUrl),
     sourcePublishedAt: emptyToNull(values.sourcePublishedAt),
-    productId: emptyToNull(values.productId),
+    productId: values.type === 'product_fact' ? emptyToNull(values.productId) : null,
     mentionsClient: values.mentionsClient,
     clientPermission: values.mentionsClient && values.clientPermission,
   };

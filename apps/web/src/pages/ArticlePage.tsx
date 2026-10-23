@@ -181,6 +181,8 @@ export function ArticlePage() {
         article={article}
         canRun={isOwnerOrAdmin}
         canConfirm={canConfirmGeneration}
+        style={style}
+        products={catalog.products}
         onChanged={replace}
       />
 
