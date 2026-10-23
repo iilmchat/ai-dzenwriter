@@ -41,5 +41,9 @@ export default defineConfig({
   test: {
     environment: 'jsdom',
     include: ['src/**/*.test.{ts,tsx}'],
+    setupFiles: ['src/test/setup.ts'],
+    // Два тяжёлых теста поднимают CodeMirror и jsdom. Один worker не конкурирует
+    // за память с тестами API, которые turbo запускает параллельно.
+    maxWorkers: 1,
   },
 });

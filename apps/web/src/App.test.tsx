@@ -606,7 +606,8 @@ describe('приложение', () => {
 
     renderAt(`/articles/${ARTICLE_ID}/edit`);
 
-    expect(await screen.findByRole('region', { name: 'Исходник' })).toBeTruthy();
+    // Редактор грузится отдельным чанком: даём динамическому импорту время.
+    expect(await screen.findByRole('region', { name: 'Исходник' }, { timeout: 5000 })).toBeTruthy();
     expect(screen.getByRole('region', { name: 'Предпросмотр' })).toBeTruthy();
     expect(screen.getByRole('complementary', { name: 'Проверки' })).toBeTruthy();
     expect(await screen.findByText('«42» не найдено в фактах')).toBeTruthy();

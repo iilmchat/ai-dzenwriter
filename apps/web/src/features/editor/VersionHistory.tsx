@@ -6,6 +6,7 @@ import {
   type VersionSummary,
 } from '@dzenwriter/shared';
 import { useState } from 'react';
+import { fetchVersion } from '../../api/versions';
 import { formatDateTime } from '../../lib/format';
 import { BUTTON_SECONDARY, PANEL_CLASS } from '../../shared/ui/classes';
 
@@ -158,7 +159,6 @@ const DIFF_LABELS: Record<DiffPair['kind'], string> = {
 // Загрузка версии для сравнения: ошибка не должна ронять страницу.
 async function loadVersion(articleId: string, number: number): Promise<VersionDetail | null> {
   try {
-    const { fetchVersion } = await import('../../api/versions');
     return await fetchVersion(articleId, number);
   } catch {
     return null;

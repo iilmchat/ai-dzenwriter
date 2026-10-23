@@ -1,7 +1,7 @@
+import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router';
 import { ArticlePage } from './pages/ArticlePage';
 import { BoardPage } from './pages/BoardPage';
-import { EditorPage } from './pages/EditorPage';
 import { FactsPage } from './pages/FactsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MetricsPage } from './pages/MetricsPage';
@@ -12,6 +12,12 @@ import { UsersPage } from './pages/UsersPage';
 import { SessionProvider } from './session/SessionContext';
 import { AppShell } from './shell/AppShell';
 import { RequireSession } from './shell/RequireSession';
+
+// Редактор тянет CodeMirror и react-markdown. Отдельный чанк не грузит их тем,
+// кто работает только с доской, фактами или метриками.
+const EditorPage = lazy(() =>
+  import('./pages/EditorPage').then((module) => ({ default: module.EditorPage })),
+);
 
 export function App() {
   return (
@@ -27,7 +33,20 @@ export function App() {
         >
           <Route index element={<BoardPage />} />
           <Route path="articles/:id" element={<ArticlePage />} />
-          <Route path="articles/:id/edit" element={<EditorPage />} />
+          <Route
+            path="articles/:id/edit"
+            element={
+              <Suspense
+                fallback={
+                  <p role="status" className="p-6 text-sm text-on-surface-variant">
+                    Загрузка редактора…
+                  </p>
+                }
+              >
+                <EditorPage />
+              </Suspense>
+            }
+          />
           <Route path="facts" element={<FactsPage />} />
           <Route path="products" element={<ProductsPage />} />
           <Route path="publications" element={<PublicationsPage />} />
