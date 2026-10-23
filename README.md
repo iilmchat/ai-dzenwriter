@@ -9,7 +9,7 @@
 
 Внутренний инструмент IIRuChating для планирования, генерации, проверки и отслеживания статей для Яндекс Дзен.
 
-**Статус:** E1–E10 выполнены: монорепозиторий, база, API, веб, Docker, CI, вход через GitHub, роли, доска материалов, переходы по статусам, факт-база, привязка фактов к материалам, справочник продуктов, генерация с mock LLM, движок проверок, редактор с версиями, пакет для Дзена и метрики (ручной ввод и импорт CSV). Дальше — эксплуатация (E11). Подробнее — [docs/04-implementation-status.md](docs/04-implementation-status.md).
+**Статус:** E1–E11 выполнены в технической части: монорепозиторий, база, API, веб, Docker, CI, вход через GitHub, роли, доска материалов, переходы по статусам, факт-база, привязка фактов к материалам, справочник продуктов, генерация с mock LLM, движок проверок, редактор с версиями, пакет для Дзена, метрики (ручной ввод и импорт CSV), резервные копии с проверкой восстановления и runbook сбоев LLM. Юридические пункты перед запуском ещё открыты. Подробнее — [docs/04-implementation-status.md](docs/04-implementation-status.md) и [docs/07-operations.md](docs/07-operations.md).
 
 **Фокус v1:** ИИ — агенты, LLM-системы и их внедрение, новости индустрии, продукты и опыт IIRuChating.
 
@@ -82,6 +82,9 @@ Client ID и Client secret запишите в `.env` как `GITHUB_CLIENT_ID` 
 | `pnpm db:generate`                                      | Новая миграция после изменения схемы                                                    |
 | `pnpm --filter @dzenwriter/api dev:session demo-author` | Сессия для локальной проверки в браузере, когда OAuth не настроен                       |
 | `pnpm --filter @dzenwriter/api dev:revoke-sessions`     | Отзыв всех активных сессий после такой проверки                                         |
+| `pnpm db:backup`                                        | Резервная копия PostgreSQL в `backups/`                                                 |
+| `pnpm db:backup:verify [файл]`                          | Восстановление копии во временную базу и проверка схемы                                 |
+| `pnpm sessions:cleanup`                                 | Удаление истёкших и отозванных сессий                                                   |
 
 ## Разделы интерфейса
 
@@ -118,7 +121,8 @@ prompts/         базовый промпт Dzen Writer
 design/brand/    ассеты ai-brand (закреплённый коммит)
 docker/          конфигурация nginx для образа web
 e2e/             сквозные тесты Playwright
-docs/            дизайн, данные, backlog, статус, UI, право, ADR
+docs/            дизайн, данные, backlog, статус, UI, право, эксплуатация, ADR
+scripts/         резервные копии PostgreSQL и проверка восстановления
 prototype/       кликабельный HTML-прототип интерфейса
 .github/         CI и Dependabot
 ```
@@ -132,6 +136,7 @@ prototype/       кликабельный HTML-прототип интерфей
 - [Статус реализации](docs/04-implementation-status.md)
 - [UI и брендинг](docs/05-ui-brand.md)
 - [Право, персональные данные и безопасность](docs/06-legal-and-safety.md)
+- [Эксплуатация: чек-лист запуска, бэкапы и runbook LLM](docs/07-operations.md)
 - [ADR-0001. Стек и монорепозиторий](docs/adr/0001-stack-and-monorepo.md)
 - [ADR-0002. Публикация в Дзен вручную](docs/adr/0002-dzen-publishing-manual.md)
 - [ADR-0003. Стили как конфигурация](docs/adr/0003-styles-as-config.md)

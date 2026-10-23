@@ -1,6 +1,6 @@
 import { auditLog, sessions, users } from '@dzenwriter/db';
 import type { UserRole } from '@dzenwriter/shared';
-import { and, count, eq, gt, isNull } from 'drizzle-orm';
+import { and, count, eq, gt, isNotNull, isNull, lte, or } from 'drizzle-orm';
 import type { PgDatabase } from 'drizzle-orm/pg-core';
 import type { PostgresJsQueryResultHKT } from 'drizzle-orm/postgres-js';
 import type {
@@ -125,6 +125,16 @@ export class DrizzleIdentityRepository implements IdentityRepository {
       )
       .returning({ id: sessions.id });
     return revoked.length;
+  }
+
+  // В базе остаются только сессии, которые ещё могут пригодиться: действующие.
+  // Отозванные и истёкшие не нужны ни для входа, ни для аудита.
+  async deleteInactiveSessions(now: Date): Promise<number> {
+    const deleted = await this.db
+      .delete(sessions)
+      .where(or(lte(sessions.expiresAt, now), isNotNull(sessions.revokedAt)))
+      .returning({ id: sessions.id });
+    return deleted.length;
   }
 
   async insertAudit(record: AuditRecord): Promise<void> {

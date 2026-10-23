@@ -119,6 +119,17 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     return revoked;
   }
 
+  async deleteInactiveSessions(now: Date): Promise<number> {
+    let deleted = 0;
+    for (const [id, session] of this.sessions) {
+      if (session.expiresAt <= now || session.revokedAt !== null) {
+        this.sessions.delete(id);
+        deleted += 1;
+      }
+    }
+    return deleted;
+  }
+
   async insertAudit(record: AuditRecord): Promise<void> {
     this.audit.push(record);
   }

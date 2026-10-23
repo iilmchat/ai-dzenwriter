@@ -14,6 +14,7 @@
     "start": "node --env-file-if-exists=../../.env dist/main.js",
     "dev:session": "tsx --env-file-if-exists=../../.env scripts/dev-session.ts",
     "dev:revoke-sessions": "tsx --env-file-if-exists=../../.env scripts/revoke-sessions.ts",
+    "sessions:cleanup": "tsx --env-file-if-exists=../../.env src/scripts/cleanup-sessions.ts",
     "config:validate": "tsx --env-file-if-exists=../../.env src/scripts/validate-config.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "test": "vitest run"

@@ -25,6 +25,9 @@
     "db:generate": "pnpm --filter @dzenwriter/db generate",
     "db:migrate": "pnpm --filter @dzenwriter/db migrate",
     "db:seed": "pnpm --filter @dzenwriter/db seed",
+    "db:backup": "node --env-file-if-exists=.env scripts/backup-db.mjs",
+    "db:backup:verify": "node --env-file-if-exists=.env scripts/verify-backup.mjs",
+    "sessions:cleanup": "pnpm --filter @dzenwriter/api sessions:cleanup",
     "docker:up": "docker compose up -d --build --wait",
     "docker:down": "docker compose down",
     "docker:logs": "docker compose logs -f api web"

@@ -95,6 +95,39 @@ describe.skipIf(!testDatabaseUrl)('DrizzleIdentityRepository на PostgreSQL', (
       expect(await repository.findActiveSession(again, now)).toBeUndefined();
     }));
 
+  it('удаляет истёкшие и отозванные сессии, оставляя действующие', () =>
+    inRollback(async (repository) => {
+      const user = await repository.upsertUser({
+        githubId: uniqueGithubId(),
+        login: `login-${randomUUID()}`,
+        name: null,
+        makeAdmin: false,
+      });
+      const now = new Date();
+      const active = hashSessionToken(`active-${randomUUID()}`);
+      const expired = hashSessionToken(`expired-${randomUUID()}`);
+      const revoked = hashSessionToken(`revoked-${randomUUID()}`);
+      await repository.insertSession({ userId: user.id, tokenHash: active, expiresAt: LATER });
+      await repository.insertSession({
+        userId: user.id,
+        tokenHash: expired,
+        expiresAt: new Date(now.getTime() - 1000),
+      });
+      await repository.insertSession({ userId: user.id, tokenHash: revoked, expiresAt: LATER });
+
+      const revokedSession = await repository.findActiveSession(revoked, now);
+      expect(revokedSession).toBeDefined();
+      await repository.revokeSession(revokedSession?.sessionId ?? '', now);
+
+      // В общей тестовой базе могут остаться сессии от других прогонов: проверяем минимум.
+      expect(await repository.deleteInactiveSessions(now)).toBeGreaterThanOrEqual(2);
+      expect(await repository.findActiveSession(active, now)).toMatchObject({
+        user: { id: user.id },
+      });
+      expect(await repository.findActiveSession(revoked, now)).toBeUndefined();
+      expect(await repository.deleteInactiveSessions(now)).toBe(0);
+    }));
+
   it('счётчик администраторов не учитывает отключённых', () =>
     inRollback(async (repository) => {
       const before = await repository.countActiveAdmins();

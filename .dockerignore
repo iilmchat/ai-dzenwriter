@@ -12,6 +12,7 @@
 **/*.tsbuildinfo
 **/playwright-report
 **/test-results
+backups
 
 # Секреты и локальные настройки
 .env

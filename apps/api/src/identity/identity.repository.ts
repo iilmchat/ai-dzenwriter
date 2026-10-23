@@ -41,5 +41,6 @@ export interface IdentityRepository {
   findActiveSession(tokenHash: string, now: Date): Promise<ActiveSessionRow | undefined>;
   revokeSession(sessionId: string, now: Date): Promise<void>;
   revokeUserSessions(userId: string, now: Date): Promise<number>;
+  deleteInactiveSessions(now: Date): Promise<number>;
   insertAudit(record: AuditRecord): Promise<void>;
 }

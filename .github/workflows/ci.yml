@@ -112,9 +112,19 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
       - run: docker compose config --quiet
       - run: docker compose up -d --build --wait
       - run: curl --fail --silent --show-error http://127.0.0.1:8080/ready
+      - name: Резервная копия и проверка восстановления
+        run: |
+          node scripts/backup-db.mjs
+          node scripts/verify-backup.mjs
+      - name: Очистка сессий в контейнере
+        run: docker compose exec -T api node dist/scripts/cleanup-sessions.js
 
       - name: Логи при ошибке
         if: failure()
