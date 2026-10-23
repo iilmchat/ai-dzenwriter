@@ -185,6 +185,7 @@
 | `reviewer_id`    | uuid, FK на users    | Не равен `owner_id` материала: проверяется в сервисе |
 | `decision`       | review_decision      |                                                      |
 | `comment`        | text, null           | Обязателен при `changes_requested`                   |
+| `rating`         | smallint, null       | Оценка редактора 1–5; необязательная                 |
 
 ### publications
 

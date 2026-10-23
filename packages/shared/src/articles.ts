@@ -104,6 +104,8 @@ export const transitionInputSchema = z.object({
   expectedVersion: z.number().int().min(1),
   comment: z.string().trim().max(2000, 'Комментарий длиннее 2000 знаков').optional(),
   externalUrl: publicationUrlSchema.optional(),
+  // Оценка редактора при утверждении: 1–5, необязательная.
+  rating: z.number().int().min(1).max(5).optional(),
 });
 export type TransitionInput = z.infer<typeof transitionInputSchema>;
 
@@ -184,6 +186,7 @@ export const reviewSummarySchema = z.object({
   comment: z.string().nullable(),
   versionNumber: z.number().int(),
   reviewerLogin: z.string(),
+  rating: z.number().int().min(1).max(5).nullable(),
   createdAt: z.iso.datetime(),
 });
 

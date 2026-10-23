@@ -115,6 +115,19 @@ describe('схема и миграции', () => {
     ).resolves.toBeUndefined();
   });
 
+  it('не принимает оценку ревью вне диапазона 1–5', async () => {
+    await expect(
+      inRollback(sql, async (tx) => {
+        const userId = await insertUser(tx, 'reviewer');
+        const articleId = await insertArticle(tx, userId);
+        await tx`
+          insert into reviews (article_id, version_number, reviewer_id, decision, rating)
+          values (${articleId}, 1, ${userId}, 'approved', 6)
+        `;
+      }),
+    ).rejects.toMatchObject({ code: '23514' });
+  });
+
   it('запрещает изменять версии статьи', async () => {
     await expect(
       inRollback(sql, async (tx) => {

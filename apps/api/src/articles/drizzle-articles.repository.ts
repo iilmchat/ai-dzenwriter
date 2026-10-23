@@ -289,6 +289,7 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
         decision: reviews.decision,
         comment: reviews.comment,
         versionNumber: reviews.versionNumber,
+        rating: reviews.rating,
         createdAt: reviews.createdAt,
         reviewerId: reviewerUser.id,
         reviewerLogin: reviewerUser.login,
@@ -304,6 +305,7 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
       comment: row.comment,
       versionNumber: row.versionNumber,
       reviewer: { id: row.reviewerId, login: row.reviewerLogin, name: row.reviewerName },
+      rating: row.rating,
       createdAt: row.createdAt,
     }));
   }
@@ -477,6 +479,7 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
       reviewerId: review.reviewerId,
       decision: review.decision,
       comment: review.comment,
+      rating: review.rating,
     });
   }
 

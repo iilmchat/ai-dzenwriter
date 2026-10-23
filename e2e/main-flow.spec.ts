@@ -102,8 +102,10 @@ test('материал проходит путь от создания до пу
       await expect(reviewerPage.getByRole('link', { name: 'Редактировать текст' })).toHaveCount(0);
 
       await reviewerPage.getByRole('radio', { name: 'Утверждено' }).check();
+      await reviewerPage.getByLabel('Оценка редактора').selectOption('5');
       await reviewerPage.getByRole('button', { name: 'Перевести' }).click();
       await expect(reviewerPage.getByText('Статус: Утверждено')).toBeVisible();
+      await expect(reviewerPage.getByText(/оценка 5 из 5/)).toBeVisible();
     } finally {
       await reviewerContext.close();
     }

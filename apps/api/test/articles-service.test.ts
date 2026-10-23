@@ -566,14 +566,39 @@ describe('переходы статусов', () => {
     const approved = await harness.service.transition(
       harness.actors.reviewer,
       article.id,
-      { to: 'approved', expectedVersion: 1 },
+      { to: 'approved', expectedVersion: 1, rating: 5 },
       NOW,
     );
 
-    expect(approved).toMatchObject({ status: 'approved', reviewer: { login: 'boris' } });
+    expect(approved).toMatchObject({
+      status: 'approved',
+      reviewer: { login: 'boris' },
+      reviews: [expect.objectContaining({ decision: 'approved', rating: 5 })],
+    });
     expect(harness.repo.reviews).toEqual([
-      expect.objectContaining({ decision: 'approved', versionNumber: 1 }),
+      expect.objectContaining({ decision: 'approved', versionNumber: 1, rating: 5 }),
     ]);
+  });
+
+  it('оценку нельзя поставить при возврате на доработку', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'in_review', { currentVersionNumber: 1 });
+    harness.repo.addVersion(article.id);
+
+    await expect(
+      harness.service.transition(
+        harness.actors.reviewer,
+        article.id,
+        {
+          to: 'drafting',
+          expectedVersion: 1,
+          comment: 'Нужны правки',
+          rating: 4,
+        },
+        NOW,
+      ),
+    ).rejects.toThrow(/только при утверждении/);
   });
 
   it('автор не утверждает собственный материал', async () => {

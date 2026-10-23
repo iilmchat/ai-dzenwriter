@@ -270,6 +270,7 @@ function ReviewsPanel({ article }: { readonly article: ArticleDetail }) {
             <li key={`${review.createdAt}-${review.decision}`}>
               {REVIEW_LABELS[review.decision] ?? review.decision}, версия {review.versionNumber},{' '}
               {review.reviewerLogin}, {formatDateTime(review.createdAt)}
+              {review.rating !== null ? `, оценка ${review.rating} из 5` : ''}
               {review.comment ? `. Комментарий: ${review.comment}` : ''}
             </li>
           ))}

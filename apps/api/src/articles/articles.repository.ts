@@ -78,6 +78,7 @@ export interface ReviewRecord {
   readonly comment: string | null;
   readonly versionNumber: number;
   readonly reviewer: PersonRef;
+  readonly rating: number | null;
   readonly createdAt: Date;
 }
 
@@ -153,6 +154,7 @@ export interface NewReview {
   readonly reviewerId: string;
   readonly decision: ReviewDecision;
   readonly comment: string | null;
+  readonly rating: number | null;
 }
 
 export interface NewPublication {

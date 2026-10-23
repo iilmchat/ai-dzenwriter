@@ -11,6 +11,7 @@ import {
   numeric,
   pgTable,
   primaryKey,
+  smallint,
   text,
   timestamp,
   unique,
@@ -291,11 +292,14 @@ export const reviews = pgTable(
       .references(() => users.id),
     decision: text('decision').notNull(),
     comment: text('comment'),
+    // Оценка редактора по итогам ревью: 1–5, необязательная.
+    rating: smallint('rating'),
     createdAt: createdAt(),
   },
   (table) => [
     check('reviews_decision_check', oneOf(table.decision.name, REVIEW_DECISIONS)),
     check('reviews_comment_check', sql.raw("decision = 'approved' OR comment IS NOT NULL")),
+    check('reviews_rating_check', sql`rating is null or (rating >= 1 and rating <= 5)`),
   ],
 );
 

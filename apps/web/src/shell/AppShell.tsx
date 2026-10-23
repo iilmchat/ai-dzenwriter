@@ -37,9 +37,14 @@ export function AppShell() {
               Стили и форматы
             </NavLink>
             {user?.role === 'admin' ? (
-              <NavLink to="/admin/users" className={navClass}>
-                Пользователи
-              </NavLink>
+              <>
+                <NavLink to="/admin/pilot" className={navClass}>
+                  Пилот
+                </NavLink>
+                <NavLink to="/admin/users" className={navClass}>
+                  Пользователи
+                </NavLink>
+              </>
             ) : null}
           </nav>
           {user ? (

@@ -310,6 +310,51 @@ describe('приложение', () => {
     expect(await screen.findByText('Этот раздел недоступен для вашей роли.')).toBeTruthy();
   });
 
+  it('показатели пилота доступны администратору', async () => {
+    stubApi({
+      'GET /api/v1/pilot/metrics': () =>
+        json({
+          period: { from: null, to: null },
+          articles: {
+            total: 2,
+            approved: 1,
+            reviewed: 1,
+            approvalMedianHours: 26.5,
+            approvedWithoutReturn: 1,
+            approvedWithoutReturnShare: 1,
+            gateCaught: 1,
+            gateCaughtBeforeReviewShare: 1,
+            withGeneratedVersion: 1,
+            textChangedAfterGeneration: 1,
+            textChangedAfterGenerationShare: 1,
+            averageRating: 5,
+            ratedArticles: 1,
+          },
+          generation: {
+            runs: 2,
+            succeeded: 1,
+            needsInput: 1,
+            failed: 0,
+            cancelled: 0,
+            needsInputShare: 0.5,
+            failureShare: 0,
+            questions: [{ question: 'Нужен источник', count: 1 }],
+            costUsd: 0.2,
+            costPerArticle: 0.2,
+          },
+        }),
+    });
+
+    renderAt('/admin/pilot');
+
+    expect(await screen.findByRole('heading', { name: 'Показатели пилота' })).toBeTruthy();
+    expect(await screen.findByText('26,5 ч')).toBeTruthy();
+    expect(screen.getByText('Нужен источник')).toBeTruthy();
+    expect(screen.getByText('5,0 / 5')).toBeTruthy();
+    expect(screen.getByText('1 оценка по шкале 1–5')).toBeTruthy();
+    expect(screen.getAllByText(/0,20/)).toHaveLength(2);
+  });
+
   it('факт-база: ревьюер одобряет чужой черновик', async () => {
     stubApi(
       { 'GET /api/v1/facts': () => json({ items: [factItem()], truncated: false }) },
@@ -385,7 +430,9 @@ describe('приложение', () => {
 
     renderAt(`/articles/${ARTICLE_ID}`);
 
-    fireEvent.change(await screen.findByLabelText('Факт'), { target: { value: FACT_ID } });
+    fireEvent.change(await screen.findByLabelText('Факт', { exact: true }, { timeout: 5000 }), {
+      target: { value: FACT_ID },
+    });
     fireEvent.click(screen.getByRole('button', { name: 'Привязать' }));
 
     expect(await screen.findByText('F1 · Источник новости · Одобрен')).toBeTruthy();

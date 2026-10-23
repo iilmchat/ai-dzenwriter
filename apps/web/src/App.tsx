@@ -5,6 +5,7 @@ import { BoardPage } from './pages/BoardPage';
 import { FactsPage } from './pages/FactsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MetricsPage } from './pages/MetricsPage';
+import { PilotPage } from './pages/PilotPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { PublicationsPage } from './pages/PublicationsPage';
 import { StylesPage } from './pages/StylesPage';
@@ -52,6 +53,14 @@ export function App() {
           <Route path="publications" element={<PublicationsPage />} />
           <Route path="metrics" element={<MetricsPage />} />
           <Route path="styles" element={<StylesPage />} />
+          <Route
+            path="admin/pilot"
+            element={
+              <RequireSession roles={['admin']}>
+                <PilotPage />
+              </RequireSession>
+            }
+          />
           <Route
             path="admin/users"
             element={

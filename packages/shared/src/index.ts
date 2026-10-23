@@ -11,5 +11,6 @@ export * from './facts';
 export * from './generation';
 export * from './publications';
 export * from './metrics';
+export * from './pilot';
 export * from './labels';
 export * from './products';

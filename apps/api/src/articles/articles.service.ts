@@ -333,6 +333,9 @@ export class ArticlesService {
     if (rule.needsUrl === true && !input.externalUrl) {
       throw new UnprocessableEntityException('Укажите ссылку на статью в Дзене');
     }
+    if (input.rating !== undefined && rule.decision !== 'approved') {
+      throw new UnprocessableEntityException('Оценку 1–5 можно поставить только при утверждении');
+    }
 
     const context = await this.gateContext(view);
     const problems = gateProblems(rule, context);
@@ -361,6 +364,7 @@ export class ArticlesService {
           reviewerId: actor.id,
           decision: rule.decision,
           comment: input.comment ?? null,
+          rating: input.rating ?? null,
         });
       }
       if (rule.to === 'scheduled' || rule.to === 'published') {

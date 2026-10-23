@@ -19,6 +19,7 @@ export function TransitionForm({ article, onDone }: TransitionFormProps) {
   const [target, setTarget] = useState('');
   const [comment, setComment] = useState('');
   const [url, setUrl] = useState('');
+  const [rating, setRating] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const selected = article.transitions.find((option) => option.to === target);
@@ -41,6 +42,7 @@ export function TransitionForm({ article, onDone }: TransitionFormProps) {
       expectedVersion: article.version,
       comment: comment.trim() || undefined,
       externalUrl: url.trim() || undefined,
+      rating: selected.to === 'approved' && rating !== '' ? Number(rating) : undefined,
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Проверьте поля формы');
@@ -53,6 +55,7 @@ export function TransitionForm({ article, onDone }: TransitionFormProps) {
       setTarget('');
       setComment('');
       setUrl('');
+      setRating('');
       onDone(next);
     } catch (cause) {
       setError(errorMessage(cause));
@@ -119,6 +122,26 @@ export function TransitionForm({ article, onDone }: TransitionFormProps) {
                 value={url}
                 onChange={(event) => setUrl(event.target.value)}
               />
+            </label>
+          ) : null}
+          {selected?.to === 'approved' ? (
+            <label className={LABEL_CLASS}>
+              Оценка редактора
+              <select
+                className={INPUT_CLASS}
+                value={rating}
+                onChange={(event) => setRating(event.target.value)}
+              >
+                <option value="">Без оценки</option>
+                {[1, 2, 3, 4, 5].map((value) => (
+                  <option key={value} value={value}>
+                    {value} из 5
+                  </option>
+                ))}
+              </select>
+              <span className="text-xs font-normal text-on-surface-variant">
+                Необязательно. Оценка попадёт в отчёт по пилоту.
+              </span>
             </label>
           ) : null}
           {error ? <Notice tone="error">{error}</Notice> : null}

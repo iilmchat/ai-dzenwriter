@@ -261,6 +261,7 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
         comment: review.comment,
         versionNumber: review.versionNumber,
         reviewer: this.requirePerson(review.reviewerId),
+        rating: review.rating,
         createdAt: review.createdAt,
       }));
   }
