@@ -9,15 +9,16 @@ import {
   reviews,
   users,
 } from '@dzenwriter/db';
-import type {
-  ArticleFormat,
-  ArticleStatus,
-  CheckSeverity,
-  FactStatus,
-  FactType,
-  Tone,
-  VersionClaim,
-  VersionOrigin,
+import {
+  countBlockingChecks,
+  type ArticleFormat,
+  type ArticleStatus,
+  type CheckSeverity,
+  type FactStatus,
+  type FactType,
+  type Tone,
+  type VersionClaim,
+  type VersionOrigin,
 } from '@dzenwriter/shared';
 import { and, count, desc, eq, gte, lte, ne, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -61,6 +62,7 @@ const articleSelection = {
   ownerId: articles.ownerId,
   reviewerId: articles.reviewerId,
   currentVersionNumber: articles.currentVersionNumber,
+  currentVersionChecks: articleVersions.checks,
   plannedAt: articles.plannedAt,
   version: articles.version,
   createdAt: articles.createdAt,
@@ -87,6 +89,7 @@ interface ArticleSelectRow {
   ownerId: string;
   reviewerId: string | null;
   currentVersionNumber: number | null;
+  currentVersionChecks: unknown;
   plannedAt: Date | null;
   version: number;
   createdAt: Date;
@@ -163,6 +166,13 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
       .from(articles)
       .innerJoin(ownerUser, eq(ownerUser.id, articles.ownerId))
       .leftJoin(reviewerUser, eq(reviewerUser.id, articles.reviewerId))
+      .leftJoin(
+        articleVersions,
+        and(
+          eq(articleVersions.articleId, articles.id),
+          eq(articleVersions.number, articles.currentVersionNumber),
+        ),
+      )
       .where(and(...conditions))
       .orderBy(desc(articles.updatedAt))
       .limit(filter.limit);
@@ -175,6 +185,13 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
       .from(articles)
       .innerJoin(ownerUser, eq(ownerUser.id, articles.ownerId))
       .leftJoin(reviewerUser, eq(reviewerUser.id, articles.reviewerId))
+      .leftJoin(
+        articleVersions,
+        and(
+          eq(articleVersions.articleId, articles.id),
+          eq(articleVersions.number, articles.currentVersionNumber),
+        ),
+      )
       .where(eq(articles.id, id))
       .limit(1);
     const [row] = rows;
@@ -540,6 +557,7 @@ function toArticleView(row: ArticleSelectRow): ArticleView {
       row.reviewerId !== null && row.reviewerLogin !== null
         ? { id: row.reviewerId, login: row.reviewerLogin, name: row.reviewerName }
         : null,
+    blockingChecks: countBlockingChecks(parseChecks(row.currentVersionChecks)),
   };
 }
 

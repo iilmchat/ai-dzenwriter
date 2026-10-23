@@ -452,6 +452,25 @@ describe('список', () => {
     expect(items[0]?.owner.login).toBe('anna');
   });
 
+  it('показывает число блокирующих проверок текущей версии', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'drafting', { currentVersionNumber: 1 });
+    harness.repo.addVersion(article.id, {
+      checks: [
+        { id: 'numbers_must_map_to_facts', severity: 'block', message: 'Число без факта' },
+        { id: 'length_in_range', severity: 'warn', message: 'Короткий текст' },
+      ],
+    });
+
+    const { items } = await harness.service.list(
+      { mine: true, includeArchived: false },
+      harness.actors.owner.id,
+    );
+
+    expect(items[0]?.blockingChecks).toBe(1);
+  });
+
   it('архив скрыт по умолчанию и виден по флагу', async () => {
     const harness = setup();
     const article = await createArticle(harness);

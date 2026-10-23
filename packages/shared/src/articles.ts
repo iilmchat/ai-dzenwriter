@@ -149,6 +149,8 @@ export const articleItemSchema = z.object({
   reviewer: personRefSchema.nullable(),
   plannedAt: z.iso.datetime().nullable(),
   currentVersionNumber: z.number().int().nullable(),
+  // Блокирующие проверки текущей версии: карточка доски показывает их без открытия материала.
+  blockingChecks: z.number().int().nonnegative(),
   version: z.number().int(),
   createdAt: z.iso.datetime(),
   updatedAt: z.iso.datetime(),

@@ -124,6 +124,7 @@ const ITEM = {
   reviewer: null,
   plannedAt: null,
   currentVersionNumber: null,
+  blockingChecks: 0,
   version: 1,
   createdAt: '2026-10-20T10:00:00.000Z',
   updatedAt: '2026-10-21T10:00:00.000Z',
@@ -258,6 +259,74 @@ describe('приложение', () => {
 
     const topic = await screen.findByText('Агенты на длинных задачах');
     expect(topic.closest('section')?.textContent).toContain('Идея');
+  });
+
+  it('карточка доски показывает блокировки и следующий шаг', async () => {
+    stubApi(
+      {
+        'GET /api/v1/articles': () =>
+          json({
+            items: [{ ...ITEM, status: 'drafting', blockingChecks: 2 }],
+            truncated: false,
+          }),
+      },
+      ADMIN,
+    );
+
+    renderAt('/');
+
+    expect(await screen.findByText('2 блокирующих')).toBeTruthy();
+    expect(screen.getByText('Дописать текст и отправить на ревью')).toBeTruthy();
+    expect(screen.getByText('АИ')).toBeTruthy();
+  });
+
+  it('доска фильтрует материалы по владельцу и блокировкам', async () => {
+    const blocked = { ...ITEM, status: 'drafting' as const, blockingChecks: 1 };
+    const other = {
+      ...ITEM,
+      id: '00000000-0000-4000-8000-0000000000c1',
+      topic: 'Другой материал',
+      owner: AUTHOR,
+      status: 'idea' as const,
+    };
+    stubApi(
+      {
+        'GET /api/v1/articles': () => json({ items: [blocked, other], truncated: false }),
+      },
+      ADMIN,
+    );
+
+    renderAt('/');
+
+    expect(await screen.findByText('Другой материал')).toBeTruthy();
+    fireEvent.click(screen.getByLabelText('Только с блокировками'));
+    await waitFor(() => expect(screen.queryByText('Другой материал')).toBeNull());
+    expect(screen.getByText('1 блокирующая')).toBeTruthy();
+
+    fireEvent.click(screen.getByLabelText('Только с блокировками'));
+    fireEvent.change(screen.getByLabelText('Владелец'), { target: { value: AUTHOR.id } });
+    await waitFor(() => expect(screen.getByText('Другой материал')).toBeTruthy());
+    expect(screen.queryByText('Агенты на длинных задачах')).toBeNull();
+  });
+
+  it('материал можно переместить между колонками через меню', async () => {
+    const posted: unknown[] = [];
+    stubApi({
+      [`POST /api/v1/articles/${ARTICLE_ID}/transitions`]: (init) => {
+        posted.push(JSON.parse(String(init?.body)));
+        return json({ ...DETAIL, status: 'researching', version: 2 });
+      },
+    });
+
+    renderAt('/');
+
+    fireEvent.change(await screen.findByLabelText('Переместить материал'), {
+      target: { value: 'researching' },
+    });
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toEqual({ to: 'researching', expectedVersion: 1 });
+    expect(await screen.findByText('Привязать факты и перейти к черновику')).toBeTruthy();
   });
 
   it('мои задачи: ревьюер видит очередь и свои материалы по действиям', async () => {

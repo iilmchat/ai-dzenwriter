@@ -1,14 +1,28 @@
-import type { StyleCard } from '@dzenwriter/shared';
+import type { PersonRef, StyleCard } from '@dzenwriter/shared';
 import type { BoardFilters as Filters } from '../../api/articles';
 import { INPUT_CLASS, LABEL_CLASS } from '../../shared/ui/classes';
 
 interface BoardFiltersProps {
   readonly filters: Filters;
   readonly styles: readonly StyleCard[];
+  readonly owners: readonly PersonRef[];
+  readonly ownerId: string;
+  readonly onlyBlocked: boolean;
   readonly onChange: (next: Filters) => void;
+  readonly onOwnerChange: (value: string) => void;
+  readonly onOnlyBlockedChange: (value: boolean) => void;
 }
 
-export function BoardFilters({ filters, styles, onChange }: BoardFiltersProps) {
+export function BoardFilters({
+  filters,
+  styles,
+  owners,
+  ownerId,
+  onlyBlocked,
+  onChange,
+  onOwnerChange,
+  onOnlyBlockedChange,
+}: BoardFiltersProps) {
   return (
     <div role="group" aria-label="Фильтры доски" className="flex flex-wrap items-end gap-4">
       <label className={`${LABEL_CLASS} min-w-48`}>
@@ -26,16 +40,29 @@ export function BoardFilters({ filters, styles, onChange }: BoardFiltersProps) {
           ))}
         </select>
       </label>
-      <label className={`${LABEL_CLASS} min-w-44`}>
-        Автор
+      <label className={`${LABEL_CLASS} min-w-48`}>
+        Владелец
         <select
           className={INPUT_CLASS}
-          value={filters.mine ? 'mine' : 'all'}
-          onChange={(event) => onChange({ ...filters, mine: event.target.value === 'mine' })}
+          value={ownerId}
+          onChange={(event) => onOwnerChange(event.target.value)}
         >
-          <option value="all">Все авторы</option>
+          <option value="">Все авторы</option>
           <option value="mine">Мои материалы</option>
+          {owners.map((owner) => (
+            <option key={owner.id} value={owner.id}>
+              {owner.name ?? owner.login}
+            </option>
+          ))}
         </select>
+      </label>
+      <label className="flex items-center gap-2 pb-2 text-sm font-medium">
+        <input
+          type="checkbox"
+          checked={onlyBlocked}
+          onChange={(event) => onOnlyBlockedChange(event.target.checked)}
+        />
+        Только с блокировками
       </label>
       <label className={LABEL_CLASS}>
         Плановая дата с

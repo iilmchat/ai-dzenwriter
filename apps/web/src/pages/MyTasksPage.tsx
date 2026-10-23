@@ -4,6 +4,7 @@ import { Link } from 'react-router';
 import { fetchArticles, type BoardFilters } from '../api/articles';
 import { errorMessage } from '../api/client';
 import { ArticleCard } from '../features/board/ArticleCard';
+import { nextStepFor } from '../features/board/nextStep';
 import { useSession } from '../session/SessionContext';
 import { FOCUS_RING } from '../shared/ui/classes';
 import { Notice } from '../shared/ui/Notice';
@@ -125,7 +126,7 @@ function buildTaskGroups(
   const groups = new Map<string, { order: number; tasks: Task[] }>();
 
   for (const article of articles) {
-    const task = taskFor(article, user);
+    const task = nextStepFor(article, user);
     if (!task) {
       continue;
     }
@@ -143,59 +144,4 @@ function buildTaskGroups(
       ),
     }))
     .sort((left, right) => left.order - right.order);
-}
-
-function taskFor(
-  article: ArticleItem,
-  user: { readonly id: string; readonly role: UserRole },
-): { readonly group: string; readonly action: string; readonly order: number } | null {
-  if (article.owner.id === user.id) {
-    switch (article.status) {
-      case 'idea':
-        return {
-          group: 'Подготовить',
-          action: 'Собрать факты и перейти к черновику',
-          order: 3,
-        };
-      case 'researching':
-        return {
-          group: 'Подготовить',
-          action: 'Привязать факты и перейти к черновику',
-          order: 3,
-        };
-      case 'drafting':
-        return {
-          group: 'Доработать',
-          action: 'Дописать текст и отправить на ревью',
-          order: 2,
-        };
-      case 'in_review':
-        return {
-          group: 'Ждёт ревью',
-          action: 'Решение принимает ревьюер',
-          order: 5,
-        };
-      case 'approved':
-      case 'scheduled':
-        return {
-          group: 'Опубликовать',
-          action: 'Скачать пакет и отметить публикацию',
-          order: 4,
-        };
-      case 'published':
-      case 'archived':
-        return null;
-    }
-  }
-
-  // Ревьюер и администратор видят общую очередь: назначение происходит только после решения.
-  if (article.status === 'in_review' && (user.role === 'reviewer' || user.role === 'admin')) {
-    return {
-      group: 'На ревью',
-      action: 'Прочитать текст и принять решение',
-      order: 1,
-    };
-  }
-
-  return null;
 }

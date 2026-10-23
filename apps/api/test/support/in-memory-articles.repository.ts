@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import type { ArticleStatus, VersionClaim } from '@dzenwriter/shared';
+import { countBlockingChecks, type ArticleStatus, type VersionClaim } from '@dzenwriter/shared';
 import type { AuditRecord } from '../../src/audit/audit.record';
 import { emptyFactTotals, type FactTotals } from '../../src/articles/article-rules';
 import type {
@@ -385,10 +385,14 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
   }
 
   private view(article: ArticleRecord): ArticleView {
+    const current = (this.versions.get(article.id) ?? []).find(
+      (version) => version.number === article.currentVersionNumber,
+    );
     return {
       ...article,
       owner: this.requirePerson(article.ownerId),
       reviewer: article.reviewerId === null ? null : this.requirePerson(article.reviewerId),
+      blockingChecks: current ? countBlockingChecks(current.checks) : 0,
     };
   }
 }

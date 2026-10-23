@@ -27,6 +27,7 @@ export function toArticleItem(view: ArticleView, styleName: string): ArticleItem
     reviewer: view.reviewer,
     plannedAt: view.plannedAt?.toISOString() ?? null,
     currentVersionNumber: view.currentVersionNumber,
+    blockingChecks: view.blockingChecks,
     version: view.version,
     createdAt: view.createdAt.toISOString(),
     updatedAt: view.updatedAt.toISOString(),

@@ -47,6 +47,7 @@ export interface ArticleRecord {
 export interface ArticleView extends ArticleRecord {
   readonly owner: PersonRef;
   readonly reviewer: PersonRef | null;
+  readonly blockingChecks: number;
 }
 
 export interface VersionRecord {
