@@ -11,7 +11,7 @@ import {
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { fetchArticle, transitionArticle } from '../api/articles';
-import { errorMessage } from '../api/client';
+import { ApiError, errorMessage } from '../api/client';
 import { startGeneration } from '../api/generation';
 import {
   checkVersion,
@@ -23,9 +23,11 @@ import {
 import { ArticlePreview } from '../features/editor/ArticlePreview';
 import { ClaimsEditor, type ClaimDraft, EditorMetadata } from '../features/editor/ClaimsEditor';
 import { CommandPalette, type Command } from '../features/editor/CommandPalette';
+import { ConflictDialog } from '../features/editor/ConflictDialog';
 import { EditorChecksPanel } from '../features/editor/EditorChecksPanel';
 import { MarkdownEditor, type MarkdownEditorHandle } from '../features/editor/MarkdownEditor';
 import { VersionHistory } from '../features/editor/VersionHistory';
+import { formatDateTime } from '../lib/format';
 import { useSession } from '../session/SessionContext';
 import {
   BUTTON_PRIMARY,
@@ -63,6 +65,65 @@ const EMPTY_DRAFT: Draft = {
   claims: [],
 };
 
+const AUTOSAVE_DEBOUNCE_MS = 700;
+const DRAFT_STORAGE_PREFIX = 'dzenwriter:draft:';
+
+interface StoredDraft {
+  readonly draft: Draft;
+  readonly baseVersion: number;
+  readonly savedAt: string;
+}
+
+interface Conflict {
+  readonly localDraft: Draft;
+  readonly latestArticle: ArticleDetail;
+  readonly latestVersion: VersionDetail | null;
+  readonly versions: readonly VersionSummary[];
+  readonly showDiff: boolean;
+}
+
+function storageKey(articleId: string): string {
+  return `${DRAFT_STORAGE_PREFIX}${articleId}`;
+}
+
+function readStoredDraft(articleId: string): StoredDraft | null {
+  try {
+    const raw = window.localStorage.getItem(storageKey(articleId));
+    if (raw === null) {
+      return null;
+    }
+    const parsed = JSON.parse(raw) as Partial<StoredDraft>;
+    if (
+      typeof parsed.baseVersion !== 'number' ||
+      typeof parsed.savedAt !== 'string' ||
+      parsed.draft === undefined ||
+      typeof parsed.draft.title !== 'string' ||
+      typeof parsed.draft.articleMarkdown !== 'string'
+    ) {
+      return null;
+    }
+    return parsed as StoredDraft;
+  } catch {
+    return null;
+  }
+}
+
+function writeStoredDraft(articleId: string, stored: StoredDraft): void {
+  try {
+    window.localStorage.setItem(storageKey(articleId), JSON.stringify(stored));
+  } catch {
+    // Хранилище может быть недоступно в приватном режиме: редактор продолжает работать.
+  }
+}
+
+function clearStoredDraft(articleId: string): void {
+  try {
+    window.localStorage.removeItem(storageKey(articleId));
+  } catch {
+    // См. writeStoredDraft: отсутствие localStorage не блокирует редактирование.
+  }
+}
+
 // Редактор материала: исходник, предпросмотр в духе Дзена и панель проверок.
 export function EditorPage() {
   const { id = '' } = useParams();
@@ -70,6 +131,10 @@ export function EditorPage() {
   const [article, setArticle] = useState<ArticleDetail | null>(null);
   const [versions, setVersions] = useState<VersionSummary[]>([]);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
+  const [savedDraft, setSavedDraft] = useState<Draft>(EMPTY_DRAFT);
+  const [draftReady, setDraftReady] = useState(false);
+  const [autosavedAt, setAutosavedAt] = useState<Date | undefined>(undefined);
+  const [conflict, setConflict] = useState<Conflict | undefined>(undefined);
   const [checks, setChecks] = useState<VersionCheck[]>([]);
   const [error, setError] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
@@ -79,20 +144,66 @@ export function EditorPage() {
   const [expectedVersion, setExpectedVersion] = useState(1);
   const editor = useRef<MarkdownEditorHandle | null>(null);
 
-  const load = useCallback(async () => {
-    const [detail, list] = await Promise.all([fetchArticle(id), fetchVersions(id)]);
-    setArticle(detail);
-    setVersions(list.items);
-    setExpectedVersion(detail.version);
-    if (detail.currentVersionNumber !== null) {
-      const version = await fetchVersion(id, detail.currentVersionNumber);
-      setDraft(toDraft(version));
-      setChecks(version.checks);
-    }
-  }, [id]);
+  const load = useCallback(
+    async (restoreLocalDraft = false) => {
+      const [detail, list] = await Promise.all([fetchArticle(id), fetchVersions(id)]);
+      const version =
+        detail.currentVersionNumber === null
+          ? null
+          : await fetchVersion(id, detail.currentVersionNumber);
+      const serverDraft = version === null ? EMPTY_DRAFT : toDraft(version);
+
+      setArticle(detail);
+      setVersions(list.items);
+      setExpectedVersion(detail.version);
+      setSavedDraft(serverDraft);
+      setChecks(version?.checks ?? []);
+
+      if (!restoreLocalDraft) {
+        setDraft(serverDraft);
+        clearStoredDraft(id);
+        setAutosavedAt(undefined);
+        return;
+      }
+
+      const stored = readStoredDraft(id);
+      if (stored === null) {
+        setDraft(serverDraft);
+        return;
+      }
+      if (stored.baseVersion === detail.version) {
+        setDraft(stored.draft);
+        setNotice(`Восстановлен локальный черновик от ${formatDateTime(stored.savedAt)}.`);
+        return;
+      }
+      setDraft(serverDraft);
+      setConflict({
+        localDraft: stored.draft,
+        latestArticle: detail,
+        latestVersion: version,
+        versions: list.items,
+        showDiff: false,
+      });
+    },
+    [id],
+  );
 
   useEffect(() => {
-    load().catch((cause: unknown) => setError(errorMessage(cause)));
+    let active = true;
+    load(true)
+      .then(() => {
+        if (active) {
+          setDraftReady(true);
+        }
+      })
+      .catch((cause: unknown) => {
+        if (active) {
+          setError(errorMessage(cause));
+        }
+      });
+    return () => {
+      active = false;
+    };
   }, [load]);
 
   // Проверки считаются на сервере по ходу правки: пауза в полсекунды, чтобы не спамить.
@@ -130,6 +241,41 @@ export function EditorPage() {
     (user.id === article.owner.id || user.role === 'admin') &&
     article.status !== 'archived' &&
     article.status !== 'published';
+  const dirty = draftReady && JSON.stringify(draft) !== JSON.stringify(savedDraft);
+
+  // Автосохранение локальное: версии создаёт только кнопка «Сохранить версию»,
+  // иначе каждое нажатие клавиши плодило бы записи в истории.
+  useEffect(() => {
+    if (!draftReady || !article || !canEdit || conflict !== undefined) {
+      return;
+    }
+    if (!dirty) {
+      clearStoredDraft(id);
+      setAutosavedAt(undefined);
+      return;
+    }
+    const timer = window.setTimeout(() => {
+      writeStoredDraft(id, {
+        draft,
+        baseVersion: expectedVersion,
+        savedAt: new Date().toISOString(),
+      });
+      setAutosavedAt(new Date());
+    }, AUTOSAVE_DEBOUNCE_MS);
+    return () => window.clearTimeout(timer);
+  }, [article, canEdit, conflict, dirty, draft, expectedVersion, id, draftReady]);
+
+  useEffect(() => {
+    if (!dirty && conflict === undefined) {
+      return;
+    }
+    const handler = (event: BeforeUnloadEvent) => {
+      event.preventDefault();
+      event.returnValue = '';
+    };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [conflict, dirty]);
 
   async function save() {
     if (!article) {
@@ -155,19 +301,68 @@ export function EditorPage() {
           factIds: [...claim.factIds],
         })),
       });
-      setDraft(toDraft(response.version));
+      const next = toDraft(response.version);
+      setDraft(next);
+      setSavedDraft(next);
       setChecks(response.version.checks);
       setExpectedVersion(response.article.version);
+      clearStoredDraft(id);
+      setAutosavedAt(undefined);
       setNotice(`Сохранена версия ${response.version.number}.`);
       await load();
     } catch (cause) {
-      setError(errorMessage(cause));
+      if (cause instanceof ApiError && cause.status === 409) {
+        await openConflict();
+      } else {
+        setError(errorMessage(cause));
+      }
     } finally {
       setSaving(false);
     }
   }
 
+  async function openConflict() {
+    try {
+      const [latestArticle, list] = await Promise.all([fetchArticle(id), fetchVersions(id)]);
+      const latestVersion =
+        latestArticle.currentVersionNumber === null
+          ? null
+          : await fetchVersion(id, latestArticle.currentVersionNumber);
+      setConflict({
+        localDraft: draft,
+        latestArticle,
+        latestVersion,
+        versions: list.items,
+        showDiff: false,
+      });
+    } catch (cause) {
+      setError(errorMessage(cause));
+    }
+  }
+
+  function reloadLatest() {
+    if (!conflict) {
+      return;
+    }
+    const next = conflict.latestVersion === null ? EMPTY_DRAFT : toDraft(conflict.latestVersion);
+    setArticle(conflict.latestArticle);
+    setVersions([...conflict.versions]);
+    setDraft(next);
+    setSavedDraft(next);
+    setChecks(conflict.latestVersion?.checks ?? []);
+    setExpectedVersion(conflict.latestArticle.version);
+    clearStoredDraft(id);
+    setAutosavedAt(undefined);
+    setConflict(undefined);
+    setError(undefined);
+    setNotice('Загружена последняя версия с сервера.');
+  }
+
   async function generate() {
+    if (dirty || conflict !== undefined) {
+      setError('Сначала сохраните изменения: генерация создаст новую версию поверх текущей.');
+      return;
+    }
     setError(undefined);
     setNotice(undefined);
     try {
@@ -192,9 +387,13 @@ export function EditorPage() {
     setError(undefined);
     try {
       const response = await rollbackVersion(id, number);
-      setDraft(toDraft(response.version));
+      const next = toDraft(response.version);
+      setDraft(next);
+      setSavedDraft(next);
       setChecks(response.version.checks);
       setExpectedVersion(response.article.version);
+      clearStoredDraft(id);
+      setAutosavedAt(undefined);
       setNotice(`Версия ${number} восстановлена как версия ${response.version.number}.`);
       await load();
     } catch (cause) {
@@ -217,6 +416,10 @@ export function EditorPage() {
 
   async function sendToReview() {
     if (!article) {
+      return;
+    }
+    if (dirty || conflict !== undefined) {
+      setError('Сначала сохраните изменения: на ревью уходит последняя сохранённая версия.');
       return;
     }
     setError(undefined);
@@ -264,6 +467,14 @@ export function EditorPage() {
         <Link
           to={`/articles/${article.id}`}
           className={`w-fit text-sm font-medium hover:underline ${FOCUS_RING}`}
+          onClick={(event) => {
+            if (
+              (dirty || conflict !== undefined) &&
+              !window.confirm('Есть несохранённые изменения. Выйти из редактора?')
+            ) {
+              event.preventDefault();
+            }
+          }}
         >
           ← К материалу
         </Link>
@@ -274,6 +485,15 @@ export function EditorPage() {
           {article.styleName} · {ARTICLE_FORMAT_LABELS[article.format]} ·{' '}
           {ARTICLE_STATUS_LABELS[article.status]} · версия {article.currentVersionNumber ?? '—'} ·{' '}
           {draft.articleMarkdown.length} знаков
+        </p>
+        <p aria-live="polite" className="text-xs text-on-surface-variant">
+          {conflict !== undefined
+            ? 'Есть конфликт версий: решите его в диалоге.'
+            : dirty
+              ? autosavedAt === undefined
+                ? 'Есть несохранённые изменения'
+                : `Черновик сохранён локально ${formatDateTime(autosavedAt.toISOString())}`
+              : 'Все изменения сохранены'}
         </p>
       </header>
 
@@ -344,7 +564,7 @@ export function EditorPage() {
         <button
           type="button"
           className={BUTTON_PRIMARY}
-          disabled={!canEdit || saving}
+          disabled={!canEdit || saving || conflict !== undefined}
           onClick={() => void save()}
         >
           {saving ? 'Сохраняем…' : 'Сохранить версию'}
@@ -352,7 +572,7 @@ export function EditorPage() {
         <button
           type="button"
           className={BUTTON_SECONDARY}
-          disabled={!canEdit}
+          disabled={!canEdit || dirty || conflict !== undefined}
           onClick={() => void generate()}
         >
           Сгенерировать заново
@@ -360,7 +580,7 @@ export function EditorPage() {
         <button
           type="button"
           className={BUTTON_SECONDARY}
-          disabled={!canEdit || blocking > 0}
+          disabled={!canEdit || blocking > 0 || dirty || conflict !== undefined}
           onClick={() => void sendToReview()}
         >
           На ревью
@@ -397,6 +617,16 @@ export function EditorPage() {
             />
           </div>
         </div>
+      ) : null}
+
+      {conflict ? (
+        <ConflictDialog
+          localMarkdown={conflict.localDraft.articleMarkdown}
+          latestVersion={conflict.latestVersion}
+          showDiff={conflict.showDiff}
+          onCompare={() => setConflict({ ...conflict, showDiff: !conflict.showDiff })}
+          onReload={reloadLatest}
+        />
       ) : null}
 
       <CommandPalette

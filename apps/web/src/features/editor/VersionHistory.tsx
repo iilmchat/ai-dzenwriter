@@ -126,7 +126,7 @@ export function VersionHistory({
 }
 
 // Сравнение по абзацам: добавленные, удалённые и изменённые.
-function VersionDiff({ pairs }: { readonly pairs: readonly DiffPair[] }) {
+export function VersionDiff({ pairs }: { readonly pairs: readonly DiffPair[] }) {
   if (pairs.length === 0) {
     return <p className="mt-3 text-sm text-on-surface-variant">Различий нет.</p>;
   }

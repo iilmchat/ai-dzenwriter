@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { MemoryRouter } from 'react-router';
 import { App } from './App';
@@ -232,6 +232,7 @@ describe('приложение', () => {
   afterEach(() => {
     cleanup();
     vi.unstubAllGlobals();
+    window.localStorage.clear();
   });
 
   it('без входа ведёт на экран входа и показывает состояние сервиса', async () => {
@@ -882,6 +883,127 @@ describe('приложение', () => {
     expect(screen.getByRole('complementary', { name: 'Проверки' })).toBeTruthy();
     expect(await screen.findByText('«42» не найдено в фактах')).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Сохранить версию' })).toBeTruthy();
+  });
+
+  it('редактор автосохраняет черновик в localStorage', async () => {
+    const version = versionDetail({
+      number: 2,
+      title: 'Заголовок статьи',
+      articleMarkdown: 'Первый абзац.',
+    });
+    stubApi({
+      [`GET /api/v1/articles/${ARTICLE_ID}`]: () => json({ ...DETAIL, currentVersionNumber: 2 }),
+      [`GET /api/v1/articles/${ARTICLE_ID}/versions`]: () =>
+        json({
+          items: [
+            {
+              number: 2,
+              origin: 'generated',
+              advertisingLabel: false,
+              blockingChecks: 0,
+              createdAt: '2026-10-22T10:00:00.000Z',
+              createdBy: 'anna',
+            },
+          ],
+        }),
+      [`GET /api/v1/articles/${ARTICLE_ID}/versions/2`]: () => json(version),
+      [`POST /api/v1/articles/${ARTICLE_ID}/versions/check`]: () =>
+        json({ checks: version.checks, claims: version.claims }),
+    });
+
+    renderAt(`/articles/${ARTICLE_ID}/edit`);
+
+    await screen.findByRole('region', { name: 'Исходник' }, { timeout: 5000 });
+    fireEvent.change(screen.getByLabelText('Заголовок'), {
+      target: { value: 'Новый заголовок' },
+    });
+
+    expect(await screen.findByText(/Черновик сохранён локально/)).toBeTruthy();
+    const stored = window.localStorage.getItem(`dzenwriter:draft:${ARTICLE_ID}`);
+    expect(stored).not.toBeNull();
+    expect(stored).toContain('Новый заголовок');
+
+    cleanup();
+    renderAt(`/articles/${ARTICLE_ID}/edit`);
+    await screen.findByRole('region', { name: 'Исходник' }, { timeout: 5000 });
+    expect(await screen.findByText(/Восстановлен локальный черновик/)).toBeTruthy();
+    expect((screen.getByLabelText('Заголовок') as HTMLInputElement).value).toBe('Новый заголовок');
+  });
+
+  it('конфликт версий показывает diff и перезагружает серверную версию', async () => {
+    const localVersion = versionDetail({
+      number: 2,
+      title: 'Локальный заголовок',
+      articleMarkdown: 'Локальный текст.',
+    });
+    const latestVersion = versionDetail({
+      number: 3,
+      title: 'Серверный заголовок',
+      articleMarkdown: 'Серверный текст.',
+    });
+    let articleCalls = 0;
+    stubApi({
+      [`GET /api/v1/articles/${ARTICLE_ID}`]: () => {
+        articleCalls += 1;
+        return json({
+          ...DETAIL,
+          currentVersionNumber: articleCalls === 1 ? 2 : 3,
+          version: articleCalls === 1 ? 1 : 2,
+        });
+      },
+      [`GET /api/v1/articles/${ARTICLE_ID}/versions`]: () =>
+        json({
+          items: [
+            {
+              number: 2,
+              origin: 'generated',
+              advertisingLabel: false,
+              blockingChecks: 0,
+              createdAt: '2026-10-22T10:00:00.000Z',
+              createdBy: 'anna',
+            },
+            {
+              number: 3,
+              origin: 'manual',
+              advertisingLabel: false,
+              blockingChecks: 0,
+              createdAt: '2026-10-22T11:00:00.000Z',
+              createdBy: 'anna',
+            },
+          ],
+        }),
+      [`GET /api/v1/articles/${ARTICLE_ID}/versions/2`]: () => json(localVersion),
+      [`GET /api/v1/articles/${ARTICLE_ID}/versions/3`]: () => json(latestVersion),
+      [`POST /api/v1/articles/${ARTICLE_ID}/versions/check`]: () =>
+        json({ checks: localVersion.checks, claims: localVersion.claims }),
+      [`POST /api/v1/articles/${ARTICLE_ID}/versions`]: () =>
+        json(
+          {
+            type: 'about:blank',
+            title: 'Conflict',
+            status: 409,
+            detail: 'Материал изменился, пока вы его смотрели',
+          },
+          409,
+        ),
+    });
+
+    renderAt(`/articles/${ARTICLE_ID}/edit`);
+
+    await screen.findByRole('region', { name: 'Исходник' }, { timeout: 5000 });
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить версию' }));
+
+    expect(await screen.findByRole('heading', { name: 'Материал изменили' })).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'Сравнить' }));
+    const dialog = screen.getByRole('dialog');
+    expect(await within(dialog).findByText('Серверный текст.')).toBeTruthy();
+    expect(within(dialog).getByText('Локальный текст.')).toBeTruthy();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Перезагрузить' }));
+    expect(screen.queryByRole('heading', { name: 'Материал изменили' })).toBeNull();
+    expect((screen.getByLabelText('Заголовок') as HTMLInputElement).value).toBe(
+      'Серверный заголовок',
+    );
   });
 
   it('генерация показывает стадии и вопросы модели', async () => {
