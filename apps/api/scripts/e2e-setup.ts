@@ -2,7 +2,6 @@ import { createHash, randomBytes } from 'node:crypto';
 import { and, eq, inArray, isNull, like } from 'drizzle-orm';
 import { articles, createDatabase, facts, sessions, users } from '@dzenwriter/db';
 
-const E2E_TOPIC_PREFIX = 'E2E-main-flow:';
 const AUTHOR_LOGIN = 'e2e-author';
 const REVIEWER_LOGIN = 'e2e-reviewer';
 const AUTHOR_GITHUB_ID = 990001;
@@ -33,11 +32,11 @@ async function main(): Promise<void> {
   const { client, db } = createDatabase(databaseUrl, { max: 1 });
   try {
     // Версии статей append-only, поэтому старые E2E-материалы не удаляем, а прячем в архив:
-    // на доске остаются только данные текущего прогона.
+    // на доске остаются только данные текущего прогона. Префикс E2E общий для всех прогонов.
     await db
       .update(articles)
       .set({ status: 'archived', archivedAt: new Date(), updatedAt: new Date() })
-      .where(like(articles.topic, `${E2E_TOPIC_PREFIX}%`));
+      .where(like(articles.topic, 'E2E%'));
 
     const author = await ensureUser(db, {
       githubId: AUTHOR_GITHUB_ID,

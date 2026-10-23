@@ -260,6 +260,71 @@ describe('приложение', () => {
     expect(topic.closest('section')?.textContent).toContain('Идея');
   });
 
+  it('мои задачи: ревьюер видит очередь и свои материалы по действиям', async () => {
+    const task = (overrides: Record<string, unknown>) => ({
+      ...ITEM,
+      id: '00000000-0000-4000-8000-0000000000b1',
+      owner: AUTHOR,
+      updatedAt: '2026-10-21T10:00:00.000Z',
+      ...overrides,
+    });
+    stubApi(
+      {
+        'GET /api/v1/articles': () =>
+          json({
+            items: [
+              task({ topic: 'Чужой материал на ревью', status: 'in_review' }),
+              task({
+                id: '00000000-0000-4000-8000-0000000000b2',
+                topic: 'Мой черновик',
+                owner: REVIEWER,
+                status: 'drafting',
+              }),
+              task({
+                id: '00000000-0000-4000-8000-0000000000b3',
+                topic: 'Мой утверждённый материал',
+                owner: REVIEWER,
+                status: 'approved',
+              }),
+              task({
+                id: '00000000-0000-4000-8000-0000000000b4',
+                topic: 'Мой материал на ревью',
+                owner: REVIEWER,
+                status: 'in_review',
+              }),
+              task({
+                id: '00000000-0000-4000-8000-0000000000b5',
+                topic: 'Мой опубликованный материал',
+                owner: REVIEWER,
+                status: 'published',
+              }),
+              task({
+                id: '00000000-0000-4000-8000-0000000000b6',
+                topic: 'Чужая идея',
+                owner: AUTHOR,
+                status: 'idea',
+              }),
+            ],
+            truncated: false,
+          }),
+      },
+      REVIEWER,
+    );
+
+    renderAt('/tasks');
+
+    expect(await screen.findByRole('heading', { name: 'Мои задачи' })).toBeTruthy();
+    expect(await screen.findByText('Всего задач: 4')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /На ревью/ })).toBeTruthy();
+    expect(screen.getByText('Прочитать текст и принять решение')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /Доработать/ })).toBeTruthy();
+    expect(screen.getByText('Дописать текст и отправить на ревью')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /Опубликовать/ })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: /Ждёт ревью/ })).toBeTruthy();
+    expect(screen.queryByText('Мой опубликованный материал')).toBeNull();
+    expect(screen.queryByText('Чужая идея')).toBeNull();
+  });
+
   it('короткая тема ловится в форме до отправки', async () => {
     const fetchMock = stubApi();
     renderAt('/');

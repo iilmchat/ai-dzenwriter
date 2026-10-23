@@ -2,7 +2,7 @@ import { expect, test, type Browser, type BrowserContext } from '@playwright/tes
 import { execSync } from 'node:child_process';
 
 const SESSION_COOKIE = 'dzw_session';
-// Префикс совпадает с e2e-setup.ts: старые тестовые материалы убираются в архив перед прогоном.
+// Все тестовые материалы начинаются с E2E: e2e-setup убирает их в архив перед прогоном.
 const E2E_TOPIC_PREFIX = 'E2E-main-flow:';
 
 interface E2ESetup {
@@ -43,8 +43,16 @@ test('материал проходит путь от создания до пу
     await createForm.getByLabel('Стиль').selectOption({ label: 'Новости индустрии' });
     await createForm.getByLabel('Формат').selectOption({ label: 'Новость' });
     await createForm.getByRole('button', { name: 'Создать материал' }).click();
+    await expect(authorPage.getByText(`Материал «${topic}» создан`)).toBeVisible();
 
-    await authorPage.getByRole('link', { name: topic }).click();
+    // Новый материал сразу появляется в «Моих задачах» с подсказкой следующего шага.
+    await authorPage.getByRole('link', { name: 'Мои задачи' }).click();
+    await expect(authorPage.getByRole('heading', { name: 'Мои задачи' })).toBeVisible();
+    const taskCard = authorPage.locator('li').filter({
+      has: authorPage.getByRole('link', { name: topic }),
+    });
+    await expect(taskCard).toContainText('Собрать факты и перейти к черновику');
+    await taskCard.getByRole('link', { name: topic }).click();
     await expect(authorPage.getByRole('heading', { level: 1, name: topic })).toBeVisible();
     await expect(authorPage.getByText('Статус: Идея')).toBeVisible();
 

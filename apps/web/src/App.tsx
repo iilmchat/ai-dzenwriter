@@ -5,6 +5,7 @@ import { BoardPage } from './pages/BoardPage';
 import { FactsPage } from './pages/FactsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MetricsPage } from './pages/MetricsPage';
+import { MyTasksPage } from './pages/MyTasksPage';
 import { PilotPage } from './pages/PilotPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { PublicationsPage } from './pages/PublicationsPage';
@@ -33,6 +34,7 @@ export function App() {
           }
         >
           <Route index element={<BoardPage />} />
+          <Route path="tasks" element={<MyTasksPage />} />
           <Route path="articles/:id" element={<ArticlePage />} />
           <Route
             path="articles/:id/edit"

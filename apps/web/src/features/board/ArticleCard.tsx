@@ -3,7 +3,13 @@ import { Link } from 'react-router';
 import { formatDate } from '../../lib/format';
 import { FOCUS_RING } from '../../shared/ui/classes';
 
-export function ArticleCard({ article }: { readonly article: ArticleItem }) {
+export function ArticleCard({
+  article,
+  nextStep,
+}: {
+  readonly article: ArticleItem;
+  readonly nextStep?: string;
+}) {
   return (
     <li className="rounded-xl border border-outline-variant bg-surface p-4">
       <Link
@@ -32,6 +38,11 @@ export function ArticleCard({ article }: { readonly article: ArticleItem }) {
         ) : null}
         {article.reviewer ? <span>ревьюер: {article.reviewer.login}</span> : null}
       </p>
+      {nextStep ? (
+        <p className="mt-3 rounded-lg bg-secondary-container px-3 py-2 text-sm text-on-secondary-container">
+          {nextStep}
+        </p>
+      ) : null}
     </li>
   );
 }
