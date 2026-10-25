@@ -1,9 +1,11 @@
 import { RequestMethod, type INestApplication } from '@nestjs/common';
+import type { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import type { IncomingMessage } from 'node:http';
 import type { Logger } from 'pino';
 import pinoHttp from 'pino-http';
 import { ProblemDetailsFilter } from './common/problem-details.filter';
+import { registerRateLimiters } from './common/rate-limit';
 import { genRequestId } from './common/request-id';
 import type { Env } from './config/env';
 
@@ -28,8 +30,15 @@ export function configureApp(app: INestApplication, env: Env, logger: Logger): v
       },
     }),
   );
-  app.use(helmet());
+  // CSP отвечает nginx: его политика для HTML-страниц строже дефолта helmet.
+  app.use(helmet({ contentSecurityPolicy: false }));
   app.enableCors({ origin: env.WEB_ORIGIN, credentials: true });
+  // В production API стоим за nginx-прокси из docker compose: достоверно res.ip
+  // для лимитеров нужен только там, один уровень прокси.
+  if (env.NODE_ENV === 'production') {
+    (app as NestExpressApplication).set('trust proxy', 1);
+  }
+  registerRateLimiters(app, env);
   app.setGlobalPrefix('api/v1', {
     exclude: [
       { path: 'health', method: RequestMethod.GET },

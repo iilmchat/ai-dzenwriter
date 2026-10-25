@@ -60,6 +60,8 @@ services:
       LLM_DAILY_BUDGET_USD: ${LLM_DAILY_BUDGET_USD:-5}
       LLM_INPUT_PRICE_PER_MTOK: ${LLM_INPUT_PRICE_PER_MTOK:-0}
       LLM_OUTPUT_PRICE_PER_MTOK: ${LLM_OUTPUT_PRICE_PER_MTOK:-0}
+      RATE_LIMIT_MAX: ${RATE_LIMIT_MAX:-300}
+      AUTH_RATE_LIMIT_MAX: ${AUTH_RATE_LIMIT_MAX:-30}
       DATABASE_URL: postgres://${POSTGRES_USER:-dzenwriter}:${POSTGRES_PASSWORD:-dzenwriter}@postgres:5432/${POSTGRES_DB:-dzenwriter}
     depends_on:
       migrate:

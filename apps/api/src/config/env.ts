@@ -37,6 +37,10 @@ const envSchema = z.object({
   LLM_DAILY_BUDGET_USD: z.coerce.number().nonnegative().default(5),
   LLM_INPUT_PRICE_PER_MTOK: z.coerce.number().nonnegative().default(0),
   LLM_OUTPUT_PRICE_PER_MTOK: z.coerce.number().nonnegative().default(0),
+  // Лимит запросов к API с одного IP за минуту. Health-энды (/health, /ready) не считают.
+  RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
+  // Жёстче лимит на GitHub-вход: защита эндов входа от перебора.
+  AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
 });
 
 export type Env = z.infer<typeof envSchema>;

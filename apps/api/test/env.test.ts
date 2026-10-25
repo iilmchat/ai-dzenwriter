@@ -9,7 +9,18 @@ describe('parseEnv', () => {
       API_PORT: 4000,
       LOG_LEVEL: 'info',
       WEB_ORIGIN: 'http://localhost:5173',
+      RATE_LIMIT_MAX: 300,
+      AUTH_RATE_LIMIT_MAX: 30,
     });
+  });
+
+  it('требует положительные значения лимитов запросов', () => {
+    expect(() => parseEnv({ DATABASE_URL: 'postgres://x', RATE_LIMIT_MAX: '0' })).toThrow(
+      /RATE_LIMIT_MAX/,
+    );
+    expect(() => parseEnv({ DATABASE_URL: 'postgres://x', AUTH_RATE_LIMIT_MAX: '-1' })).toThrow(
+      /AUTH_RATE_LIMIT_MAX/,
+    );
   });
 
   it('требует DATABASE_URL и называет переменную в ошибке', () => {

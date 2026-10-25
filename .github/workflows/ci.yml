@@ -119,6 +119,11 @@ jobs:
       - run: docker compose config --quiet
       - run: docker compose up -d --build --wait
       - run: curl --fail --silent --show-error http://127.0.0.1:8080/ready
+      - name: Строгий CSP в ответе HTML
+        run: |
+          curl --head --silent --show-error http://127.0.0.1:8080/ \
+            | grep -i '^content-security-policy:.*script-src .self.' \
+            | grep -qi 'frame-ancestors .none.'
       - name: Резервная копия и проверка восстановления
         run: |
           node scripts/backup-db.mjs

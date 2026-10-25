@@ -106,7 +106,7 @@ Client ID и Client secret запишите в `.env` как `GITHUB_CLIENT_ID` 
 
 Все переменные описаны в [`.env.example`](.env.example). Файл `.env` не коммитится, секреты в репозиторий не кладём. Вход через GitHub использует `GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `GITHUB_ORG` и `ADMIN_GITHUB_LOGINS`.
 
-Генерация работает на заглушке `LLM_PROVIDER=mock`: она отвечает корректным JSON и годится для разработки и CI. Для настоящей модели укажите `LLM_PROVIDER=openai`, `LLM_BASE_URL`, `LLM_API_KEY` и `LLM_MODEL`. Лимиты задаются `LLM_DAILY_LIMIT_PER_USER` и `LLM_DAILY_BUDGET_USD`, стоимость считается по ценам `LLM_INPUT_PRICE_PER_MTOK` и `LLM_OUTPUT_PRICE_PER_MTOK`.
+Генерация работает на заглушке `LLM_PROVIDER=mock`: она отвечает корректным JSON и годится для разработки и CI. Для настоящей модели укажите `LLM_PROVIDER=openai`, `LLM_BASE_URL`, `LLM_API_KEY` и `LLM_MODEL`. Лимиты задаются `LLM_DAILY_LIMIT_PER_USER` и `LLM_DAILY_BUDGET_USD`, стоимость считается по ценам `LLM_INPUT_PRICE_PER_MTOK` и `LLM_OUTPUT_PRICE_PER_MTOK`. Защита API: `RATE_LIMIT_MAX` (по умолчанию 300 запросов в минуту на IP) и `AUTH_RATE_LIMIT_MAX` (30 в минуту на вход через GitHub), ответ при превышении — 429 в problem+json; CSP сайта задаётся конфигом nginx `docker/nginx/default.conf`.
 
 Переменные проверяются при старте. Если значение неверно, API не запускается и называет переменную в сообщении.
 
