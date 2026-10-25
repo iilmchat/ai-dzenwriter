@@ -1,4 +1,4 @@
-import { facts, products, users } from '@dzenwriter/db';
+import { articleFacts, articles, facts, products, users } from '@dzenwriter/db';
 import type { FactStatus, FactType } from '@dzenwriter/shared';
 import { and, desc, eq, sql, type SQL } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
@@ -9,6 +9,7 @@ import {
   type FactChanges,
   type FactFilter,
   type FactsRepository,
+  type FactUsageRow,
   type FactView,
   type NewFact,
 } from './facts.repository';
@@ -89,6 +90,27 @@ export class DrizzleFactsRepository implements FactsRepository {
   async findFact(id: string): Promise<FactView | undefined> {
     const [row] = await this.selectFacts().where(eq(facts.id, id)).limit(1);
     return row ? toFactView(row) : undefined;
+  }
+
+  async listFactUsage(factId: string, limit: number): Promise<FactUsageRow[]> {
+    const rows = await this.db
+      .select({
+        articleId: articles.id,
+        topic: articles.topic,
+        status: articles.status,
+        updatedAt: articles.updatedAt,
+      })
+      .from(articleFacts)
+      .innerJoin(articles, eq(articles.id, articleFacts.articleId))
+      .where(eq(articleFacts.factId, factId))
+      .orderBy(desc(articles.updatedAt))
+      .limit(limit + 1);
+    return rows.map((row) => ({
+      articleId: row.articleId,
+      topic: row.topic,
+      status: row.status as FactUsageRow['status'],
+      updatedAt: row.updatedAt,
+    }));
   }
 
   async insertFact(fact: NewFact): Promise<string> {

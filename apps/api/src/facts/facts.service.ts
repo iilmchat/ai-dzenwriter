@@ -14,6 +14,7 @@ import {
   type FactItem,
   type FactListQuery,
   type FactListResponse,
+  type FactUsageResponse,
   type FactVersionInput,
   type UpdateFactInput,
 } from '@dzenwriter/shared';
@@ -28,6 +29,7 @@ import {
 } from './facts.repository';
 
 const LIST_LIMIT = 500;
+const USAGE_LIMIT = 500;
 const VERSION_CONFLICT =
   'Факт изменился, пока вы его смотрели. Обновите страницу и повторите действие';
 
@@ -49,6 +51,21 @@ export class FactsService {
     return {
       items: rows.slice(0, LIST_LIMIT).map((row) => toFactItem(row, actor)),
       truncated: rows.length > LIST_LIMIT,
+    };
+  }
+
+  // Где факт используется: материалы, к которым он привязан. Автор видит влияние правки факта.
+  async usage(actor: FactActor, factId: string): Promise<FactUsageResponse> {
+    await this.requireFact(factId);
+    const rows = await this.repository.listFactUsage(factId, USAGE_LIMIT + 1);
+    return {
+      items: rows.slice(0, USAGE_LIMIT).map((row) => ({
+        articleId: row.articleId,
+        topic: row.topic,
+        status: row.status,
+        updatedAt: row.updatedAt.toISOString(),
+      })),
+      truncated: rows.length > USAGE_LIMIT,
     };
   }
 

@@ -1,4 +1,4 @@
-import type { FactStatus, FactType } from '@dzenwriter/shared';
+import type { ArticleStatus, FactStatus, FactType } from '@dzenwriter/shared';
 import type { PersonRef } from '../articles/articles.repository';
 import type { AuditRecord } from '../audit/audit.record';
 
@@ -39,6 +39,14 @@ export interface FactFilter {
   readonly limit: number;
 }
 
+// Материал, к которому привязан факт: список «где используется» на карточке факта.
+export interface FactUsageRow {
+  readonly articleId: string;
+  readonly topic: string;
+  readonly status: ArticleStatus;
+  readonly updatedAt: Date;
+}
+
 export interface NewFact {
   readonly type: FactType;
   readonly text: string;
@@ -75,6 +83,8 @@ export interface FactsRepository {
   withTransaction<T>(work: (repository: FactsRepository) => Promise<T>): Promise<T>;
   listFacts(filter: FactFilter): Promise<FactView[]>;
   findFact(id: string): Promise<FactView | undefined>;
+  // Материалы, к которым привязан факт: свежие обновления раньше, лимит как у списка фактов.
+  listFactUsage(factId: string, limit: number): Promise<FactUsageRow[]>;
   insertFact(fact: NewFact): Promise<string>;
   // Возвращает false, если версия в БД уже другая: факт меняли раньше.
   updateFact(

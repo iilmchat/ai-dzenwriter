@@ -1,14 +1,24 @@
 import {
+  ARTICLE_STATUS_LABELS,
   FACT_STATUS_LABELS,
   FACT_TYPE_LABELS,
   type FactItem,
+  type FactUsageItem,
   type Product,
 } from '@dzenwriter/shared';
+import { Link } from 'react-router';
 import { useState } from 'react';
 import { errorMessage } from '../../api/client';
-import { approveFact, confirmConsent, rejectFact, withdrawConsent } from '../../api/facts';
+import {
+  approveFact,
+  confirmConsent,
+  fetchFactUsage,
+  rejectFact,
+  withdrawConsent,
+} from '../../api/facts';
 import { capitalize, formatDate, formatDateTime } from '../../lib/format';
 import { BUTTON_PRIMARY, BUTTON_SECONDARY } from '../../shared/ui/classes';
+import { Notice } from '../../shared/ui/Notice';
 import { FactForm } from './FactForm';
 
 interface FactCardProps {
@@ -18,13 +28,24 @@ interface FactCardProps {
   readonly onError: (message: string) => void;
 }
 
-type OpenPanel = 'none' | 'edit' | 'correction' | 'consent' | 'withdraw';
+type OpenPanel = 'none' | 'edit' | 'correction' | 'consent' | 'withdraw' | 'usage';
+
+type UsageState =
+  | { readonly phase: 'idle' }
+  | { readonly phase: 'loading' }
+  | {
+      readonly phase: 'ready';
+      readonly items: readonly FactUsageItem[];
+      readonly truncated: boolean;
+    }
+  | { readonly phase: 'error'; readonly message: string };
 
 // Кнопки показываем только для доступных действий. Причину недоступного действия — одной строкой.
 export function FactCard({ fact, products, onChanged, onError }: FactCardProps) {
   const [open, setOpen] = useState<OpenPanel>('none');
   const [anonymized, setAnonymized] = useState(fact.anonymized);
   const [busy, setBusy] = useState(false);
+  const [usage, setUsage] = useState<UsageState>({ phase: 'idle' });
   const { actions } = fact;
   const note = hint(fact);
 
@@ -38,6 +59,23 @@ export function FactCard({ fact, products, onChanged, onError }: FactCardProps) 
       onError(errorMessage(cause));
     } finally {
       setBusy(false);
+    }
+  }
+
+  // Список «где используется» грузится по клику: привязки нужны только перед правкой факта.
+  async function toggleUsage() {
+    if (usage.phase === 'ready') {
+      setUsage({ phase: 'idle' });
+      setOpen(open === 'usage' ? 'none' : open);
+      return;
+    }
+    setOpen('usage');
+    setUsage({ phase: 'loading' });
+    try {
+      const response = await fetchFactUsage(fact.id);
+      setUsage({ phase: 'ready', items: response.items, truncated: response.truncated });
+    } catch (cause) {
+      setUsage({ phase: 'error', message: errorMessage(cause) });
     }
   }
 
@@ -173,9 +211,55 @@ export function FactCard({ fact, products, onChanged, onError }: FactCardProps) 
             Исправить
           </button>
         ) : null}
+        <button
+          type="button"
+          className={BUTTON_SECONDARY}
+          aria-expanded={open === 'usage'}
+          onClick={() => void toggleUsage()}
+        >
+          Где используется
+        </button>
       </div>
 
       {note ? <p className="text-sm text-on-surface-variant">{note}</p> : null}
+
+      {open === 'usage' ? (
+        <section
+          aria-label="Где используется"
+          className="flex flex-col gap-2 rounded-xl bg-surface-container p-4 text-sm"
+        >
+          {usage.phase === 'loading' ? <Notice>Смотрим привязки…</Notice> : null}
+          {usage.phase === 'error' ? <Notice tone="error">{usage.message}</Notice> : null}
+          {usage.phase === 'ready' ? (
+            <>
+              <p className="font-medium">
+                {usage.items.length === 0
+                  ? 'Факт пока ни к чему не привязан.'
+                  : `Привязок: ${usage.items.length}`}
+              </p>
+              <ul className="flex flex-col gap-1">
+                {usage.items.map((item) => (
+                  <li key={item.articleId}>
+                    <Link to={`/articles/${item.articleId}`} className="font-medium underline">
+                      {item.topic}
+                    </Link>{' '}
+                    · {ARTICLE_STATUS_LABELS[item.status]} · обновлён {formatDate(item.updatedAt)}
+                  </li>
+                ))}
+              </ul>
+              {usage.truncated ? (
+                <p className="text-on-surface-variant">Показаны первые 500 материалов.</p>
+              ) : null}
+              {usage.items.length > 0 ? (
+                <p className="text-on-surface-variant">
+                  Правка этого факта повлияет на перечисленные материалы: при новых проверках и
+                  версиях числа и утверждения сверяются с фактом заново.
+                </p>
+              ) : null}
+            </>
+          ) : null}
+        </section>
+      ) : null}
 
       {open === 'edit' ? (
         <FactForm
@@ -191,16 +275,24 @@ export function FactCard({ fact, products, onChanged, onError }: FactCardProps) 
       ) : null}
 
       {open === 'correction' ? (
-        <FactForm
-          mode="correction"
-          products={products}
-          initial={fact}
-          onSaved={() => {
-            setOpen('none');
-            onChanged('Исправление создано: оно ждёт одобрения ревьюера');
-          }}
-          onCancel={() => setOpen('none')}
-        />
+        <div className="flex flex-col gap-3">
+          <p className="text-sm text-on-surface-variant">
+            Исправление не переписывает историю: создастся новый факт-черновик, ревьюер его одобрит
+            или отклонит. Пока этого не случилось, работает текущий факт. После одобрения текущий
+            перейдёт в «заменён», и материалы, где он привязан, при новых проверках потребуют
+            привязать исправленный факт.
+          </p>
+          <FactForm
+            mode="correction"
+            products={products}
+            initial={fact}
+            onSaved={() => {
+              setOpen('none');
+              onChanged('Исправление создано: оно ждёт одобрения ревьюера');
+            }}
+            onCancel={() => setOpen('none')}
+          />
+        </div>
       ) : null}
 
       {open === 'consent' ? (
@@ -245,7 +337,8 @@ export function FactCard({ fact, products, onChanged, onError }: FactCardProps) 
         >
           <p className="text-sm">
             Текст заметки удалится сразу, восстановить его будет нельзя. В журнале останутся
-            идентификатор и дата.
+            идентификатор и дата. Материалы, где заметка привязана, при новых проверках потеряют её
+            числа и подтверждения утверждений — им понадобится новая привязка и версия.
           </p>
           <div className="flex flex-wrap gap-3">
             <button

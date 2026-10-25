@@ -1,6 +1,12 @@
 import { z } from 'zod';
 import { personRefSchema } from './articles';
-import { FACT_STATUSES, FACT_TYPES, type FactPolicy, type FactType } from './enums';
+import {
+  ARTICLE_STATUSES,
+  FACT_STATUSES,
+  FACT_TYPES,
+  type FactPolicy,
+  type FactType,
+} from './enums';
 
 export const FACT_TEXT_MAX_LENGTH = 20_000;
 export const FACT_SOURCE_NAME_MAX_LENGTH = 200;
@@ -181,3 +187,18 @@ export const factListResponseSchema = z.object({
   truncated: z.boolean(),
 });
 export type FactListResponse = z.infer<typeof factListResponseSchema>;
+
+// Где факт используется: материалы, к которым он привязан. Свежие обновления раньше.
+export const factUsageItemSchema = z.object({
+  articleId: z.uuid(),
+  topic: z.string(),
+  status: z.enum(ARTICLE_STATUSES),
+  updatedAt: z.iso.datetime(),
+});
+export type FactUsageItem = z.infer<typeof factUsageItemSchema>;
+
+export const factUsageResponseSchema = z.object({
+  items: z.array(factUsageItemSchema),
+  truncated: z.boolean(),
+});
+export type FactUsageResponse = z.infer<typeof factUsageResponseSchema>;

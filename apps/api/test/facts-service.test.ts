@@ -1,6 +1,7 @@
 import {
   ConflictException,
   ForbiddenException,
+  NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import type { CreateFactInput, UpdateFactInput } from '@dzenwriter/shared';
@@ -394,5 +395,60 @@ describe('список фактов', () => {
     const byText = await harness.service.list(harness.actors.reviewer, { q: 'Казани' });
     expect(byText.items.map((item) => item.text)).toEqual(['Офис в Казани']);
     expect(byText.truncated).toBe(false);
+  });
+});
+
+describe('где используется', () => {
+  it('возвращает материалы с привязкой: свежие обновления раньше', async () => {
+    const harness = setup();
+    const fact = await approvedNews(harness);
+    harness.repo.addUsage(fact.id, {
+      articleId: '00000000-0000-4000-8000-00000000a1',
+      topic: 'Старый материал',
+      status: 'published',
+      updatedAt: new Date('2026-10-20T10:00:00Z'),
+    });
+    harness.repo.addUsage(fact.id, {
+      articleId: '00000000-0000-4000-8000-00000000a2',
+      topic: 'Свежий материал',
+      status: 'in_review',
+      updatedAt: new Date('2026-10-21T10:00:00Z'),
+    });
+
+    const usage = await harness.service.usage(harness.actors.author, fact.id);
+
+    expect(usage.truncated).toBe(false);
+    expect(usage.items.map((item) => item.topic)).toEqual(['Свежий материал', 'Старый материал']);
+    expect(usage.items[0]).toMatchObject({
+      articleId: '00000000-0000-4000-8000-00000000a2',
+      status: 'in_review',
+      updatedAt: '2026-10-21T10:00:00.000Z',
+    });
+  });
+
+  it('лимит обрезает список и отмечает truncated', async () => {
+    const harness = setup();
+    const fact = await approvedNews(harness);
+    for (let index = 0; index < 501; index += 1) {
+      const suffix = String(index).padStart(12, '0');
+      harness.repo.addUsage(fact.id, {
+        articleId: `00000000-0000-4000-8000-${suffix}`,
+        topic: `Материал ${suffix}`,
+        status: 'drafting',
+        updatedAt: new Date(2026, 8, 1, 10, index % 60),
+      });
+    }
+
+    const usage = await harness.service.usage(harness.actors.reviewer, fact.id);
+
+    expect(usage.items).toHaveLength(500);
+    expect(usage.truncated).toBe(true);
+  });
+
+  it('неизвестный факт не отдаёт привязки', async () => {
+    const harness = setup();
+    await expect(
+      harness.service.usage(harness.actors.author, '00000000-0000-4000-8000-0000000000f1'),
+    ).rejects.toBeInstanceOf(NotFoundException);
   });
 });

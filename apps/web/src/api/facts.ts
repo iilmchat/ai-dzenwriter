@@ -1,11 +1,13 @@
 import {
   factItemSchema,
   factListResponseSchema,
+  factUsageResponseSchema,
   type CreateFactInput,
   type FactFields,
   type FactItem,
   type FactListQuery,
   type FactListResponse,
+  type FactUsageResponse,
   type UpdateFactInput,
 } from '@dzenwriter/shared';
 import { apiRequest } from './client';
@@ -69,6 +71,11 @@ export function correctFact(id: string, input: FactFields): Promise<FactItem> {
     body: input,
     schema: factItemSchema,
   });
+}
+
+// Где факт используется: материалы, к которым он привязан.
+export function fetchFactUsage(id: string): Promise<FactUsageResponse> {
+  return apiRequest(`/api/v1/facts/${id}/usage`, { schema: factUsageResponseSchema });
 }
 
 function factAction(id: string, action: string, body: unknown): Promise<FactItem> {

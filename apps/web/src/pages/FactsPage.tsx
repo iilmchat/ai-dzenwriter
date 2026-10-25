@@ -40,6 +40,7 @@ export function FactsPage() {
       fetchFacts({
         type: current.type || undefined,
         status: current.status || undefined,
+        productId: current.productId || undefined,
         q: current.q.trim() || undefined,
       }).then(
         (response) => {
@@ -109,7 +110,7 @@ export function FactsPage() {
         </section>
       ) : null}
 
-      <FactFilters filters={filters} onChange={setFilters} />
+      <FactFilters filters={filters} products={catalog.products} onChange={setFilters} />
 
       {facts.phase === 'loading' ? <Notice>Загружаем факты…</Notice> : null}
       {facts.phase === 'error' ? <Notice tone="error">{facts.message}</Notice> : null}

@@ -5,6 +5,7 @@ import {
   FACT_TYPES,
   type FactStatus,
   type FactType,
+  type Product,
 } from '@dzenwriter/shared';
 import { capitalize, parseOption } from '../../lib/format';
 import { INPUT_CLASS, LABEL_CLASS } from '../../shared/ui/classes';
@@ -12,17 +13,19 @@ import { INPUT_CLASS, LABEL_CLASS } from '../../shared/ui/classes';
 export interface FactsFilters {
   readonly type: FactType | '';
   readonly status: FactStatus | '';
+  readonly productId: string;
   readonly q: string;
 }
 
-export const EMPTY_FACTS_FILTERS: FactsFilters = { type: '', status: '', q: '' };
+export const EMPTY_FACTS_FILTERS: FactsFilters = { type: '', status: '', productId: '', q: '' };
 
 interface FactFiltersProps {
   readonly filters: FactsFilters;
+  readonly products: readonly Product[];
   readonly onChange: (next: FactsFilters) => void;
 }
 
-export function FactFilters({ filters, onChange }: FactFiltersProps) {
+export function FactFilters({ filters, products, onChange }: FactFiltersProps) {
   return (
     <div role="group" aria-label="Фильтры фактов" className="flex flex-wrap items-end gap-4">
       <label className={`${LABEL_CLASS} min-w-48`}>
@@ -55,6 +58,21 @@ export function FactFilters({ filters, onChange }: FactFiltersProps) {
           {FACT_STATUSES.map((status) => (
             <option key={status} value={status}>
               {FACT_STATUS_LABELS[status]}
+            </option>
+          ))}
+        </select>
+      </label>
+      <label className={`${LABEL_CLASS} min-w-48`}>
+        Продукт
+        <select
+          className={INPUT_CLASS}
+          value={filters.productId}
+          onChange={(event) => onChange({ ...filters, productId: event.target.value })}
+        >
+          <option value="">Все продукты</option>
+          {products.map((product) => (
+            <option key={product.id} value={product.id}>
+              {product.name}
             </option>
           ))}
         </select>

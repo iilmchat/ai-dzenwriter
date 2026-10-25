@@ -6,6 +6,7 @@ import type {
   FactChanges,
   FactFilter,
   FactsRepository,
+  FactUsageRow,
   FactView,
   NewFact,
 } from '../../src/facts/facts.repository';
@@ -40,7 +41,14 @@ export class InMemoryFactsRepository implements FactsRepository {
   readonly facts = new Map<string, StoredFact>();
   readonly people = new Map<string, PersonRef>();
   readonly audit: AuditRecord[] = [];
+  // Привязка «факт → материалы» (как article_facts в базе): сеется тестом напрямую.
+  readonly usage = new Map<string, FactUsageRow[]>();
   readonly clock = new Date('2026-10-22T10:00:00Z');
+
+  addUsage(factId: string, row: FactUsageRow): void {
+    const rows = this.usage.get(factId) ?? [];
+    this.usage.set(factId, [...rows, row]);
+  }
 
   addPerson(login: string): PersonRef {
     const person = { id: randomUUID(), login, name: null };
@@ -99,6 +107,12 @@ export class InMemoryFactsRepository implements FactsRepository {
   async findFact(id: string): Promise<FactView | undefined> {
     const fact = this.facts.get(id);
     return fact ? this.view(fact) : undefined;
+  }
+
+  async listFactUsage(factId: string, limit: number): Promise<FactUsageRow[]> {
+    return [...(this.usage.get(factId) ?? [])]
+      .sort((left, right) => right.updatedAt.getTime() - left.updatedAt.getTime())
+      .slice(0, limit);
   }
 
   async insertFact(fact: NewFact): Promise<string> {

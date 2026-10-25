@@ -22,6 +22,7 @@ import {
   type FactItem,
   type FactListQuery,
   type FactListResponse,
+  type FactUsageResponse,
   type FactVersionInput,
   type UpdateFactInput,
 } from '@dzenwriter/shared';
@@ -44,6 +45,14 @@ export class FactsController {
     @AuthUser() actor: SessionUser,
   ): Promise<FactListResponse> {
     return this.facts.list(actor, query);
+  }
+
+  @Get(':id/usage')
+  usage(
+    @Param('id', factIdPipe()) id: string,
+    @AuthUser() actor: SessionUser,
+  ): Promise<FactUsageResponse> {
+    return this.facts.usage(actor, id);
   }
 
   @Post()

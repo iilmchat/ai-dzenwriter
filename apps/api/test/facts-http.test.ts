@@ -129,6 +129,47 @@ describe('факты и продукты по HTTP', () => {
     expect(response.status).toBe(401);
   });
 
+  it('где используется: без входа 401, для привязанного факта — материалы', async () => {
+    const created = await call('POST', '/facts', 'author', {
+      type: 'company_fact',
+      text: 'Команда измеряет точность ответов',
+    });
+    const id = String(created.body.id);
+    const articleId = '00000000-0000-4000-8000-00000000a1';
+    facts.addUsage(id, {
+      articleId,
+      topic: 'Агенты на длинных задачах',
+      status: 'in_review',
+      updatedAt: new Date('2026-10-21T10:00:00Z'),
+    });
+
+    const anonymous = await call('GET', `/facts/${id}/usage`);
+    expect(anonymous.status).toBe(401);
+
+    const response = await call('GET', `/facts/${id}/usage`, 'author');
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      items: [
+        {
+          articleId,
+          topic: 'Агенты на длинных задачах',
+          status: 'in_review',
+        },
+      ],
+      truncated: false,
+    });
+  });
+
+  it('где используется: неизвестный факт — 404 с понятным текстом', async () => {
+    const response = await call(
+      'GET',
+      '/facts/00000000-0000-4000-8000-0000000000f1/usage',
+      'author',
+    );
+
+    expect(response.status).toBe(404);
+  });
+
   it('новость без ссылки отклоняется с понятным текстом', async () => {
     const response = await call('POST', '/facts', 'author', {
       type: 'news_source',

@@ -635,6 +635,104 @@ describe('приложение', () => {
     expect(screen.getByText('Команда измеряет точность ответов на эталонном наборе')).toBeTruthy();
   });
 
+  it('факт-база: карточка показывает, где факт используется', async () => {
+    stubApi(
+      {
+        'GET /api/v1/facts': () => json({ items: [factItem()], truncated: false }),
+        [`GET /api/v1/facts/${FACT_ID}/usage`]: () =>
+          json({
+            items: [
+              {
+                articleId: ARTICLE_ID,
+                topic: 'Агенты на длинных задачах',
+                status: 'in_review',
+                updatedAt: '2026-10-25T12:00:00.000Z',
+              },
+            ],
+            truncated: false,
+          }),
+      },
+      REVIEWER,
+    );
+
+    renderAt('/facts');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Где используется' }));
+    expect(await screen.findByText('Привязок: 1')).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Агенты на длинных задачах' })).toBeTruthy();
+    expect(screen.getByText(/Правка этого факта повлияет/)).toBeTruthy();
+  });
+
+  it('факт-база: фильтр по продукту уходит в запрос', async () => {
+    const fetchMock = stubApi({ 'GET /api/v1/products': () => json({ items: [PRODUCT] }) }, AUTHOR);
+
+    renderAt('/facts');
+
+    // Опция появляется после загрузки каталога: иначе select не примет значение.
+    const option = await screen.findByRole('option', { name: 'Демо-продукт' });
+    const select = option.closest('select');
+    if (!select) {
+      throw new Error('Селект продукта не найден');
+    }
+    fireEvent.change(select, { target: { value: PRODUCT.id } });
+    await waitFor(() =>
+      expect(
+        fetchMock.mock.calls.some(([url]) => String(url).includes(`productId=${PRODUCT.id}`)),
+      ).toBe(true),
+    );
+  });
+
+  it('факт-база: исправление одобренного факта предупреждает о последствиях', async () => {
+    stubApi(
+      {
+        'GET /api/v1/facts': () =>
+          json({
+            items: [
+              factItem({
+                status: 'approved',
+                approvedBy: { id: REVIEWER.id, login: 'boris', name: null },
+                approvedAt: '2026-10-21T10:00:00.000Z',
+                actions: { ...FACT_ACTIONS, correct: ALLOWED },
+              }),
+            ],
+            truncated: false,
+          }),
+      },
+      REVIEWER,
+    );
+
+    renderAt('/facts');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Исправить' }));
+    expect(await screen.findByText(/Исправление не переписывает историю/)).toBeTruthy();
+    expect(screen.getByText(/текущий перейдёт в «заменён»/)).toBeTruthy();
+  });
+
+  it('факт-база: отзыв согласия предупреждает о привязанных материалах', async () => {
+    stubApi(
+      {
+        'GET /api/v1/facts': () =>
+          json({
+            items: [
+              factItem({
+                type: 'experience_note',
+                consentConfirmed: true,
+                anonymized: true,
+                actions: { ...FACT_ACTIONS, confirmConsent: ALLOWED, withdrawConsent: ALLOWED },
+              }),
+            ],
+            truncated: false,
+          }),
+      },
+      REVIEWER,
+    );
+
+    renderAt('/facts');
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Отозвать согласие' }));
+    expect(await screen.findByText(/Материалы, где заметка привязана/)).toBeTruthy();
+  });
+
   it('факт-база: автор не видит кнопку одобрения и читает причину', async () => {
     const reason = 'Решение по факту принимает ревьюер или администратор';
     stubApi(
