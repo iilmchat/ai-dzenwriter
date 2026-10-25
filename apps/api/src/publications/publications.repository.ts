@@ -1,4 +1,5 @@
 import type { ArticleStatus } from '@dzenwriter/shared';
+import type { AuditRecord } from '../audit/audit.record';
 
 export const PUBLICATIONS_REPOSITORY = Symbol('PUBLICATIONS_REPOSITORY');
 
@@ -18,4 +19,6 @@ export interface PublicationRow {
 export interface PublicationsRepository {
   // Материалы в публикации: утверждённые, запланированные и опубликованные.
   listForPublication(): Promise<PublicationRow[]>;
+  // Скачивание пакета — действие над материалом: пишем в append-only журнал.
+  insertAudit(record: AuditRecord): Promise<void>;
 }

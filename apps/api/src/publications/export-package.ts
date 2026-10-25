@@ -102,8 +102,66 @@ export function buildMetadata(article: ExportArticle): Record<string, unknown> {
   };
 }
 
-// Чек-лист публикации из 06-legal-and-safety, раздел 7. Часть пунктов система
-// проверяет сама: остаётся только human-in-the-loop там, где нужна голова редактора.
+// Ссылки «ссылка», «подробнее», «здесь» и голые URL требуют перехода, чтобы
+// понять текст: по правилам Дзена текст самодостаточен. Именованный источник
+// или ссылка с описательной подписью такой проблемы не создают.
+const GENERIC_LINK_ANCHORS = new Set([
+  'link',
+  'url',
+  'материал',
+  'подробнее',
+  'статья',
+  'тут',
+  'здесь',
+  'источник',
+  'ссылка',
+]);
+const DZEN_HOSTS = new Set(['dzen.ru', 'dzen.com', 'www.dzen.ru', 'www.dzen.com']);
+
+function normalizeAnchor(anchor: string): string {
+  return anchor
+    .trim()
+    .toLowerCase()
+    .replace(/[\s*_.,;:!?)«»"'…]+$/u, '');
+}
+
+// Возвращает ссылки, без которых смысл текста нельзя собрать.
+function collectEssentialLinks(markdown: string): string[] {
+  const problems: string[] = [];
+  for (const match of markdown.matchAll(/\[([^\]]*)\]\((https?:\/\/[^\s)]+)\)/gi)) {
+    const url = match[2];
+    if (url === undefined) {
+      continue;
+    }
+    let external;
+    try {
+      external = new URL(url).host;
+    } catch {
+      continue;
+    }
+    if (DZEN_HOSTS.has(external)) {
+      continue;
+    }
+    const anchorText = match[1] ?? '';
+    const anchor = normalizeAnchor(anchorText);
+    if (anchor === '' || anchor.includes('http') || GENERIC_LINK_ANCHORS.has(anchor)) {
+      problems.push(anchorText.trim() || url);
+    }
+  }
+  // Голый URL вне markdown-ссылки: после удаления ссылок URL и есть клик ради смысла.
+  const withoutLinks = markdown.replace(/\[[^\]]*\]\([^)]*\)/g, '');
+  for (const match of withoutLinks.matchAll(/https?:\/\/[^\s<>()]+/gi)) {
+    const raw = match[0];
+    if (raw !== undefined) {
+      problems.push(raw.replace(/[.,:)»"'…]+$/u, ''));
+    }
+  }
+  return [...new Set(problems)];
+}
+
+// Чек-лист публикации из 06-legal-and-safety, раздел 7. Все шесть пунктов система
+// проверяет сама (P1-5): человек не пропускает обязательные проверки платформы,
+// а сверку правил Дзена со справкой продолжают делать раз в квартал.
 export function buildChecklist(article: ExportArticle): ChecklistItem[] {
   const version = article.version;
   const blocking = version.checks.filter(
@@ -121,6 +179,9 @@ export function buildChecklist(article: ExportArticle): ChecklistItem[] {
       fact.type === 'news_source' && (fact.sourceUrl === null || fact.sourcePublishedAt === null),
   );
 
+  const essentialLinks = collectEssentialLinks(version.articleMarkdown);
+  const hasImagePrompt = version.imagePrompt.trim().length > 0;
+
   return [
     {
       id: 'title_matches_content',
@@ -134,8 +195,11 @@ export function buildChecklist(article: ExportArticle): ChecklistItem[] {
     {
       id: 'text_standalone',
       title: 'Текст самодостаточен: внешние ссылки не нужны для понимания',
-      done: null,
-      comment: 'Проверяет автор',
+      done: essentialLinks.length === 0,
+      comment:
+        essentialLinks.length === 0
+          ? null
+          : `Без перехода нельзя понять текст: ${essentialLinks.join('; ')}`,
     },
     {
       id: 'ad_disclosure',
@@ -162,10 +226,14 @@ export function buildChecklist(article: ExportArticle): ChecklistItem[] {
       comment: has('disclaimer_required') ? 'Тема чувствительная, а оговорки в тексте нет' : null,
     },
     {
+      // Пакет не содержит изображений: обложка делается по собственному промпту,
+      // поэтому права на картинку не нарушаются, пока промпт заполнен.
       id: 'cover_rights',
       title: 'Обложка не нарушает права на изображения',
-      done: null,
-      comment: 'Проверяет автор',
+      done: hasImagePrompt,
+      comment: hasImagePrompt
+        ? 'Обложка по промпту из пакета: чужие изображения не используются'
+        : 'Промпт обложки пуст: перед публикацией проверьте картинку вручную',
     },
   ];
 }

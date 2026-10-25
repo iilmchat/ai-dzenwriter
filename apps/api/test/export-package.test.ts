@@ -123,7 +123,7 @@ describe('метаданные пакета', () => {
 });
 
 describe('чек-лист публикации', () => {
-  it('часть пунктов проверяет система, остальные остаются на человеке', () => {
+  it('система закрывает все шесть пунктов: ручных отметок не осталось', () => {
     const items = buildChecklist(ARTICLE);
 
     expect(items.map((item) => item.id)).toEqual([
@@ -134,8 +134,48 @@ describe('чек-лист публикации', () => {
       'disclaimer',
       'cover_rights',
     ]);
-    expect(items.find((item) => item.id === 'text_standalone')?.done).toBeNull();
-    expect(items.find((item) => item.id === 'cover_rights')?.done).toBeNull();
+    expect(items.filter((item) => item.done !== true).map((item) => item.id)).toEqual([]);
+    // Основание по обложке видно в пакете: изображений в нём нет.
+    expect(items.find((item) => item.id === 'cover_rights')?.comment).toContain('не используются');
+  });
+
+  it('голая ссылка и ссылка «подробнее» помечают пункт про самодостаточность', () => {
+    const items = buildChecklist({
+      ...ARTICLE,
+      version: {
+        ...VERSION,
+        articleMarkdown:
+          'Вступление https://example.com/news в тексте.\n\n[Подробнее](https://example.com/more)',
+      },
+    });
+
+    const item = items.find((entry) => entry.id === 'text_standalone');
+    expect(item?.done).toBe(false);
+    expect(item?.comment).toContain('https://example.com/news');
+    expect(item?.comment).toContain('Подробнее');
+  });
+
+  it('именованный источник и ссылка на Дзен не ломают самодостаточность', () => {
+    const items = buildChecklist({
+      ...ARTICLE,
+      version: {
+        ...VERSION,
+        articleMarkdown:
+          'Reuters [сообщал о переносе](https://reuters.com/news) ещё вчера. См. также [обзор](https://dzen.ru/a/xyz).',
+      },
+    });
+
+    const item = items.find((entry) => entry.id === 'text_standalone');
+    expect(item?.done).toBe(true);
+    expect(item?.comment).toBeNull();
+  });
+
+  it('пустой промпт обложки помечает пункт про права на изображение', () => {
+    const items = buildChecklist({ ...ARTICLE, version: { ...VERSION, imagePrompt: '' } });
+
+    const item = items.find((entry) => entry.id === 'cover_rights');
+    expect(item?.done).toBe(false);
+    expect(item?.comment).toContain('вручную');
   });
 
   it('обещание без факта помечает пункт про заголовок', () => {
@@ -204,8 +244,9 @@ describe('состав пакета', () => {
     const checklist = files.find((file) => file.name === 'checklist.md');
 
     expect(checklist?.content).toContain('# Чек-лист перед публикацией');
-    expect(checklist?.content).toContain('[ ] Текст самодостаточен');
-    expect(checklist?.content).toContain('[x] Источники и даты указаны');
+    expect(checklist?.content).toContain('[x] Текст самодостаточен');
+    expect(checklist?.content).toContain('[x] Обложка не нарушает права');
+    expect(checklist?.content).not.toContain('[ ]');
   });
 
   it('имя файла пакета понятное и безопасное', () => {

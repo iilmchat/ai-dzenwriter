@@ -1,6 +1,7 @@
 import { articles, publications } from '@dzenwriter/db';
 import type { ArticleStatus } from '@dzenwriter/shared';
 import { desc, eq, inArray, max } from 'drizzle-orm';
+import { writeAuditRecord, type AuditRecord } from '../audit/audit.record';
 import type { DbHandle } from '../database/db-handle';
 import type { PublicationRow, PublicationsRepository } from './publications.repository';
 
@@ -40,5 +41,9 @@ export class DrizzlePublicationsRepository implements PublicationsRepository {
       publishedAt: row.publishedAt,
       externalUrl: row.externalUrl,
     }));
+  }
+
+  async insertAudit(record: AuditRecord): Promise<void> {
+    await writeAuditRecord(this.db, record);
   }
 }

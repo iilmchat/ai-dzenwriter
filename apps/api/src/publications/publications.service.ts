@@ -1,6 +1,7 @@
 import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import type { PublicationItem, PublicationListResponse } from '@dzenwriter/shared';
 import { zipSync } from 'fflate';
+import type { Actor } from '../articles/article-rules';
 import { ARTICLES_REPOSITORY, type ArticlesRepository } from '../articles/articles.repository';
 import { CATALOG_REPOSITORY, type CatalogRepository } from '../catalog/catalog.repository';
 import type { AppConfig } from '../config/app-config';
@@ -50,7 +51,8 @@ export class PublicationsService {
   }
 
   // Пакет для Дзена: текст, метаданные, промпт обложки и чек-лист публикации.
-  async buildPackage(articleId: string): Promise<ExportPackage> {
+  // Каждое скачивание пишется в журнал аудита: видно, кто и когда взял пакет.
+  async buildPackage(articleId: string, actor: Actor): Promise<ExportPackage> {
     const article = await this.articles.findArticle(articleId);
     if (!article) {
       throw new NotFoundException('Материал не найден');
@@ -112,6 +114,14 @@ export class PublicationsService {
     };
 
     const files = buildExportFiles(exportArticle);
+    await this.repository.insertAudit({
+      actorId: actor.id,
+      action: 'article.package_download',
+      entityType: 'article',
+      entityId: articleId,
+      // В аудит — только версия и состав пакета, без темы и текстов.
+      payload: { version: exportArticle.version.number, files: files.map((file) => file.name) },
+    });
     const zipped = zipSync(
       Object.fromEntries(files.map((file) => [file.name, new TextEncoder().encode(file.content)])),
     );

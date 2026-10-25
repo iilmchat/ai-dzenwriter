@@ -4,11 +4,12 @@ import { Test } from '@nestjs/testing';
 import { unzipSync } from 'fflate';
 import pino from 'pino';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { ARTICLES_REPOSITORY } from '../src/articles/articles.repository';
-import { AppModule } from '../src/app.module';
-import { configureApp } from '../src/bootstrap';
 import { GITHUB_OAUTH } from '../src/auth/github.client';
 import { createOpaqueToken, hashSessionToken } from '../src/auth/session-token';
+import { ARTICLES_REPOSITORY } from '../src/articles/articles.repository';
+import { AUDIT_REPOSITORY } from '../src/audit/audit.repository';
+import { AppModule } from '../src/app.module';
+import { configureApp } from '../src/bootstrap';
 import { CATALOG_REPOSITORY } from '../src/catalog/catalog.repository';
 import { parseEnv, type Env } from '../src/config/env';
 import { ENV } from '../src/config/tokens';
@@ -17,27 +18,31 @@ import { GENERATION_REPOSITORY } from '../src/generation/generation.repository';
 import { LLM_PROVIDER } from '../src/generation/llm-provider';
 import { MockLlmProvider } from '../src/generation/mock-provider';
 import { IDENTITY_REPOSITORY } from '../src/identity/identity.repository';
+import { METRICS_REPOSITORY } from '../src/metrics/metrics.repository';
 import { PUBLICATIONS_REPOSITORY } from '../src/publications/publications.repository';
 import { FakeGithubOAuth } from './support/fake-github';
 import { InMemoryArticlesRepository } from './support/in-memory-articles.repository';
+import { InMemoryAuditRepository } from './support/in-memory-audit.repository';
 import { InMemoryCatalog } from './support/in-memory-catalog';
 import { InMemoryFactsRepository } from './support/in-memory-facts.repository';
 import { InMemoryGenerationRepository } from './support/in-memory-generation.repository';
 import { InMemoryIdentityRepository } from './support/in-memory-identity.repository';
+import { InMemoryMetricsRepository } from './support/in-memory-metrics.repository';
 import { InMemoryPublicationsRepository } from './support/in-memory-publications.repository';
 
 const WEB_ORIGIN = 'http://localhost:8080';
-const NOW = new Date('2026-10-22T10:00:00Z');
 
-describe('публикации и пакет для Дзена по HTTP', () => {
+describe('скачивание пакета для Дзена по HTTP', () => {
   let app: INestApplication;
   let baseUrl: string;
   let identity: InMemoryIdentityRepository;
+  let audit: InMemoryAuditRepository;
   let articles: InMemoryArticlesRepository;
   let publications: InMemoryPublicationsRepository;
-  let token = '';
-  let approvedArticleId = '';
-  let draftArticleId = '';
+  const tokens: Record<'admin' | 'author', string> = { admin: '', author: '' };
+  const ids: Record<'admin' | 'author', string> = { admin: '', author: '' };
+  let approvedId = '';
+  let draftId = '';
 
   beforeAll(async () => {
     const env: Env = parseEnv({
@@ -47,10 +52,18 @@ describe('публикации и пакет для Дзена по HTTP', () =>
       GITHUB_CLIENT_SECRET: 'client-secret',
     });
     identity = new InMemoryIdentityRepository();
-    const facts = new InMemoryFactsRepository();
-    articles = new InMemoryArticlesRepository(facts);
-    publications = new InMemoryPublicationsRepository();
-    const catalog = new InMemoryCatalog();
+    audit = new InMemoryAuditRepository();
+    articles = new InMemoryArticlesRepository(new InMemoryFactsRepository());
+    // Скачивания пакета пишутся в тот же журнал, который читает /audit.
+    publications = new InMemoryPublicationsRepository((record) => {
+      audit.addEntry({
+        actorId: record.actorId,
+        action: record.action,
+        entityType: record.entityType,
+        entityId: record.entityId,
+        payload: record.payload,
+      });
+    });
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })
       .overrideProvider(ENV)
@@ -60,17 +73,21 @@ describe('публикации и пакет для Дзена по HTTP', () =>
       .overrideProvider(IDENTITY_REPOSITORY)
       .useValue(identity)
       .overrideProvider(FACTS_REPOSITORY)
-      .useValue(facts)
+      .useValue(new InMemoryFactsRepository())
       .overrideProvider(ARTICLES_REPOSITORY)
       .useValue(articles)
       .overrideProvider(CATALOG_REPOSITORY)
-      .useValue(catalog)
+      .useValue(new InMemoryCatalog())
       .overrideProvider(GENERATION_REPOSITORY)
       .useValue(new InMemoryGenerationRepository())
       .overrideProvider(LLM_PROVIDER)
       .useValue(new MockLlmProvider())
       .overrideProvider(PUBLICATIONS_REPOSITORY)
       .useValue(publications)
+      .overrideProvider(METRICS_REPOSITORY)
+      .useValue(new InMemoryMetricsRepository())
+      .overrideProvider(AUDIT_REPOSITORY)
+      .useValue(audit)
       .compile();
 
     app = moduleRef.createNestApplication({ logger: false });
@@ -82,53 +99,53 @@ describe('публикации и пакет для Дзена по HTTP', () =>
     }
     baseUrl = `http://127.0.0.1:${address.port}`;
 
-    const user = identity.addUser({ githubId: 8001, login: 'anna', role: 'author' });
-    facts.people.set(user.id, { id: user.id, login: 'anna', name: null });
-    articles.people.set(user.id, { id: user.id, login: 'anna', name: null });
-    token = createOpaqueToken();
-    await identity.insertSession({
-      userId: user.id,
-      tokenHash: hashSessionToken(token),
-      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
-    });
+    const admin = identity.addUser({ githubId: 8201, login: 'anna', role: 'admin' });
+    const author = identity.addUser({ githubId: 8202, login: 'boris', role: 'author' });
+    ids.admin = admin.id;
+    ids.author = author.id;
+    tokens.admin = await sessionFor(admin.id);
+    tokens.author = await sessionFor(author.id);
 
-    approvedArticleId = await articles.insertArticle({
-      topic: 'Как мы перенесли проверку фактов',
-      keywords: ['ии'],
+    // Утверждённый материал с версией текста: пакет для него готов.
+    const authorPerson = articles.addPerson('boris');
+    approvedId = await articles.insertArticle({
+      topic: 'Как мы проверяем факты',
+      keywords: ['ии', 'факты'],
       styleId: 'company-achievements',
       format: 'article',
       tone: 'neutral',
-      lengthMin: 8000,
-      lengthMax: 12000,
+      lengthMin: 6000,
+      lengthMax: 8000,
       productId: null,
       plannedAt: null,
-      ownerId: user.id,
+      ownerId: authorPerson.id,
     });
     await articles.insertVersion(
       {
-        articleId: approvedArticleId,
-        origin: 'generated',
-        title: 'Как мы перенесли проверку фактов',
-        articleMarkdown: 'Вступление.\n\nОсновная часть.',
-        seoTitle: 'Проверка фактов',
+        articleId: approvedId,
+        origin: 'manual',
+        title: 'Как мы проверяем факты',
+        articleMarkdown:
+          'Вступление.\n\nОсновная часть: [Reuters](https://reuters.com/news) о переносе.',
+        seoTitle: 'Проверка фактов в конвейере',
         tags: ['ии', 'практика'],
-        description: 'Описание',
-        imagePrompt: 'Обложка',
+        description: 'Как мы проверяем факты в конвейере.',
+        imagePrompt: 'Спокойная иллюстрация: экран с кодом.',
         advertisingLabel: false,
         disclaimerText: null,
         claims: [],
         checks: [],
         styleVersion: 1,
-        promptVersion: 'sha256:test',
+        promptVersion: 'sha256:abc',
         generationRunId: null,
-        createdBy: user.id,
+        createdBy: authorPerson.id,
       },
-      NOW,
+      new Date(),
     );
-    articles.setStatus(approvedArticleId, 'approved');
+    articles.setStatus(approvedId, 'approved', { ownerId: authorPerson.id });
     publications.add({
-      articleId: approvedArticleId,
-      topic: 'Как мы перенесли проверку фактов',
+      articleId: approvedId,
+      topic: 'Как мы проверяем факты',
       styleId: 'company-achievements',
       status: 'approved',
       version: 2,
@@ -138,80 +155,124 @@ describe('публикации и пакет для Дзена по HTTP', () =>
       externalUrl: null,
     });
 
-    draftArticleId = await articles.insertArticle({
-      topic: 'Черновик без утверждения',
-      keywords: ['ии'],
+    // Черновик: пакет не готов.
+    draftId = await articles.insertArticle({
+      topic: 'Черновик без версии',
+      keywords: [],
       styleId: 'company-achievements',
       format: 'article',
       tone: 'neutral',
-      lengthMin: 8000,
-      lengthMax: 12000,
+      lengthMin: 6000,
+      lengthMax: 8000,
       productId: null,
       plannedAt: null,
-      ownerId: user.id,
+      ownerId: authorPerson.id,
     });
+    articles.setStatus(draftId, 'drafting', { ownerId: authorPerson.id });
   });
 
   afterAll(async () => {
     await app.close();
   });
 
-  async function call(
-    method: string,
-    path: string,
-    as?: boolean,
-  ): Promise<{ status: number; body: Buffer; contentType: string | null }> {
-    const headers: Record<string, string> = {};
-    if (as === true) {
-      headers.Cookie = `dzw_session=${token}`;
-    }
-    const response = await fetch(`${baseUrl}/api/v1${path}`, { method, headers });
-    return {
-      status: response.status,
-      body: Buffer.from(await response.arrayBuffer()),
-      contentType: response.headers.get('content-type'),
-    };
+  async function sessionFor(userId: string): Promise<string> {
+    const token = createOpaqueToken();
+    await identity.insertSession({
+      userId,
+      tokenHash: hashSessionToken(token),
+      expiresAt: new Date(Date.now() + 24 * 60 * 60 * 1000),
+    });
+    return token;
+  }
+
+  function cookie(as: keyof typeof tokens): string {
+    return `dzw_session=${tokens[as]}`;
   }
 
   it('список публикаций отдаёт материалы в публикации', async () => {
-    const response = await call('GET', '/publications', true);
-
+    const response = await fetch(`${baseUrl}/api/v1/publications`, {
+      headers: { Cookie: cookie('author') },
+    });
     expect(response.status).toBe(200);
-    const body = JSON.parse(response.body.toString('utf8')) as {
+    const body = (await response.json()) as {
       items: { articleId: string; canExport: boolean }[];
     };
-    expect(body.items).toHaveLength(1);
-    expect(body.items[0]).toMatchObject({ articleId: approvedArticleId, canExport: true });
+    const item = body.items.find((entry) => entry.articleId === approvedId);
+    expect(item).toMatchObject({ articleId: approvedId, canExport: true });
   });
 
-  it('без входа список не отдаётся', async () => {
-    const response = await call('GET', '/publications');
-
+  it('без входа список публикаций не отдаётся', async () => {
+    const response = await fetch(`${baseUrl}/api/v1/publications`);
     expect(response.status).toBe(401);
   });
 
-  it('пакет отдаётся zip с текстом, метаданными, промптом обложки и чек-листом', async () => {
-    const response = await call('GET', `/publications/${approvedArticleId}/export`, true);
-
+  it('пакет скачивается и скачивание пишется в журнал', async () => {
+    const response = await fetch(`${baseUrl}/api/v1/publications/${approvedId}/export`, {
+      headers: { Cookie: cookie('author') },
+    });
     expect(response.status).toBe(200);
-    expect(response.contentType).toContain('application/zip');
-    const files = unzipSync(new Uint8Array(response.body));
-    const names = Object.keys(files).sort();
-    expect(names).toEqual(['article.md', 'checklist.md', 'image_prompt.txt', 'metadata.json']);
+    expect(response.headers.get('content-type')).toBe('application/zip');
+    expect(response.headers.get('content-disposition')).toContain('dzenwriter-');
+    const bytes = new Uint8Array(await response.arrayBuffer());
+    // Магия zip: пакет начинается с «PK».
+    expect([...bytes.slice(0, 4)]).toEqual([0x50, 0x4b, 0x03, 0x04]);
+    // Состав пакета и текст проверяются по распаковке, как в E9.
+    const files = unzipSync(new Uint8Array(bytes));
+    expect(Object.keys(files).sort()).toEqual([
+      'article.md',
+      'checklist.md',
+      'image_prompt.txt',
+      'metadata.json',
+    ]);
     const article = new TextDecoder().decode(files['article.md']);
-    expect(article).toContain('# Как мы перенесли проверку фактов');
-    expect(article).toContain('SEO_TITLE: Проверка фактов');
+    expect(article).toContain('# Как мы проверяем факты');
+    expect(article).toContain('SEO_TITLE: Проверка фактов в конвейере');
+
+    const records = publications.audit.filter(
+      (record) => record.entityId === approvedId && record.action === 'article.package_download',
+    );
+    expect(records).toHaveLength(1);
+    expect(records[0]).toMatchObject({
+      actorId: ids.author,
+      action: 'article.package_download',
+      entityType: 'article',
+      entityId: approvedId,
+      payload: {
+        version: 1,
+        files: ['article.md', 'metadata.json', 'image_prompt.txt', 'checklist.md'],
+      },
+    });
   });
 
-  it('неутверждённый материал пакет не готовит', async () => {
-    const response = await call('GET', `/publications/${draftArticleId}/export`, true);
-
-    expect(response.status).toBe(409);
-  });
-
-  it('без входа пакет не скачивается', async () => {
-    const response = await call('GET', `/publications/${approvedArticleId}/export`);
-
+  it('без входа пакет не отдаётся', async () => {
+    const response = await fetch(`${baseUrl}/api/v1/publications/${approvedId}/export`);
     expect(response.status).toBe(401);
+    expect(publications.audit).toHaveLength(1);
+  });
+
+  it('черновик пакета не получает: сначала ревью', async () => {
+    const response = await fetch(`${baseUrl}/api/v1/publications/${draftId}/export`, {
+      headers: { Cookie: cookie('author') },
+    });
+    expect(response.status).toBe(409);
+    expect(publications.audit).toHaveLength(1);
+  });
+
+  it('скачивание видно в журнале по сквозному фильтру', async () => {
+    const response = await fetch(
+      `${baseUrl}/api/v1/audit?action=${encodeURIComponent('article.package_download')}`,
+      { headers: { Cookie: cookie('admin') } },
+    );
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      items: { action: string; entityType: string; entityId: string; actorId: string | null }[];
+    };
+    const downloads = body.items.filter((item) => item.entityId === approvedId);
+    expect(downloads).toHaveLength(1);
+    expect(downloads[0]).toMatchObject({
+      action: 'article.package_download',
+      entityType: 'article',
+      actorId: ids.author,
+    });
   });
 });

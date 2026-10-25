@@ -24,8 +24,10 @@ export class PublicationsController {
     @AuthUser() actor: SessionUser,
     @Res() response: Response,
   ): Promise<void> {
-    void actor;
-    const package_ = await this.publications.buildPackage(articleId);
+    const package_ = await this.publications.buildPackage(articleId, {
+      id: actor.id,
+      role: actor.role,
+    });
     response.set({
       'Content-Type': 'application/zip',
       'Content-Length': String(package_.content.length),
