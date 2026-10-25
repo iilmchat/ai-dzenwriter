@@ -1,6 +1,7 @@
 import { lazy, Suspense } from 'react';
 import { Navigate, Route, Routes } from 'react-router';
 import { ArticlePage } from './pages/ArticlePage';
+import { AuditPage } from './pages/AuditPage';
 import { BoardPage } from './pages/BoardPage';
 import { FactsPage } from './pages/FactsPage';
 import { LoginPage } from './pages/LoginPage';
@@ -60,6 +61,14 @@ export function App() {
             element={
               <RequireSession roles={['admin']}>
                 <PilotPage />
+              </RequireSession>
+            }
+          />
+          <Route
+            path="admin/audit"
+            element={
+              <RequireSession roles={['admin']}>
+                <AuditPage />
               </RequireSession>
             }
           />

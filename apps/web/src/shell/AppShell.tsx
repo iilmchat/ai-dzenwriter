@@ -44,6 +44,9 @@ export function AppShell() {
                 <NavLink to="/admin/pilot" className={navClass}>
                   Пилот
                 </NavLink>
+                <NavLink to="/admin/audit" className={navClass}>
+                  Аудит
+                </NavLink>
                 <NavLink to="/admin/users" className={navClass}>
                   Пользователи
                 </NavLink>

@@ -7,6 +7,7 @@ import type {
   Tone,
   UserRole,
 } from './enums';
+import type { AuditAction, AuditEntity } from './audit';
 
 // Подписи для интерфейса и сообщений API. Значения перечислений в коде остаются латиницей.
 export const ARTICLE_STATUS_LABELS: Record<ArticleStatus, string> = {
@@ -58,4 +59,48 @@ export const TONE_LABELS: Record<Tone, string> = {
   neutral: 'Нейтральный',
   'expert-conversational': 'Экспертный, в разговоре',
   engaging: 'Вовлекающий',
+};
+
+export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
+  'auth.login': 'Вход',
+  'auth.logout': 'Выход',
+  'auth.denied': 'Отказ во входе',
+  'user.role_change': 'Смена роли',
+  'user.disable': 'Отключение пользователя',
+  'user.enable': 'Включение пользователя',
+  'product.create': 'Создание продукта',
+  'product.update': 'Правка продукта',
+  'fact.create': 'Создание факта',
+  'fact.update': 'Правка факта',
+  'fact.supersede': 'Замена факта',
+  'fact.approve': 'Одобрение факта',
+  'fact.reject': 'Отклонение факта',
+  'fact.correct': 'Предложение правки факта',
+  'consent.confirm': 'Подтверждение согласия',
+  'consent.withdraw': 'Отзыв согласия',
+  'article.create': 'Создание материала',
+  'article.update': 'Правка материала',
+  'article.transition': 'Переход по статусу',
+  'article.fact_attach': 'Привязка факта',
+  'article.fact_detach': 'Отвязка факта',
+  'article.generation_confirm': 'Подтверждение генерации',
+  'version.create': 'Новая версия текста',
+  'version.rollback': 'Откат текста',
+  'check.confirm': 'Подтверждение проверки',
+  'generation.start': 'Запуск генерации',
+  'generation.succeeded': 'Генерация завершена',
+  'generation.cancelled': 'Генерация отменена',
+  'generation.failed': 'Сбой генерации',
+  'generation.needs_input': 'Генерация ждёт ответа',
+  'metric.create': 'Ручной ввод метрик',
+  'metric.import': 'Импорт метрик',
+};
+
+export const AUDIT_ENTITY_LABELS: Record<AuditEntity, string> = {
+  user: 'Пользователь',
+  session: 'Сессия',
+  product: 'Продукт',
+  fact: 'Факт',
+  article: 'Материал',
+  metric_import: 'Импорт метрик',
 };

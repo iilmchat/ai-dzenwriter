@@ -361,7 +361,7 @@ export const auditLog = pgTable(
     action: text('action').notNull(),
     entityType: text('entity_type').notNull(),
     entityId: text('entity_id').notNull(),
-    payload: jsonb('payload').notNull().default({}),
+    payload: jsonb('payload').$type<Record<string, unknown>>().notNull().default({}),
     createdAt: createdAt(),
   },
   (table) => [index('audit_log_entity_idx').on(table.entityType, table.entityId, table.createdAt)],

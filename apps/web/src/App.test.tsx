@@ -490,6 +490,48 @@ describe('приложение', () => {
     expect(screen.getAllByText(/0,20/)).toHaveLength(2);
   });
 
+  it('журнал аудита доступен администратору', async () => {
+    stubApi({
+      'GET /api/v1/audit': () =>
+        json({
+          items: [
+            {
+              id: 3,
+              actorId: ADMIN.id,
+              actorLogin: 'anna',
+              actorName: 'Анна Иванова',
+              action: 'article.transition',
+              entityType: 'article',
+              entityId: '00000000-0000-4000-8000-00000000a1',
+              payload: { from: 'drafting', to: 'in_review' },
+              createdAt: '2026-10-25T09:00:00.000Z',
+            },
+            {
+              id: 2,
+              actorId: null,
+              actorLogin: null,
+              actorName: null,
+              action: 'auth.denied',
+              entityType: 'user',
+              entityId: '',
+              payload: {},
+              createdAt: '2026-10-24T09:00:00.000Z',
+            },
+          ],
+          truncated: true,
+        }),
+    });
+
+    renderAt('/admin/audit');
+
+    expect(await screen.findByRole('heading', { name: 'Журнал аудита' })).toBeTruthy();
+    expect(screen.getByRole('link', { name: 'Аудит' })).toBeTruthy();
+    // Ждём строку таблицы: подпись действия есть и в выпадающем списке фильтра,
+    // поэтому ориентируемся на детали записи.
+    expect(await screen.findByText(/from: drafting/)).toBeTruthy();
+    expect(screen.getByText(/Показаны последние 500 записей/)).toBeTruthy();
+  });
+
   it('факт-база: ревьюер одобряет чужой черновик', async () => {
     stubApi(
       { 'GET /api/v1/facts': () => json({ items: [factItem()], truncated: false }) },

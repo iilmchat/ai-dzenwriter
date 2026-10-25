@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ArticlesModule } from './articles/articles.module';
+import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ConfigModule } from './config/config.module';
@@ -27,6 +28,7 @@ import { UsersModule } from './users/users.module';
     PublicationsModule,
     MetricsModule,
     PilotModule,
+    AuditModule,
     HealthModule,
   ],
 })
