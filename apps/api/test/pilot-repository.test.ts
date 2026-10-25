@@ -96,6 +96,11 @@ describe.skipIf(!testDatabaseUrl)('DrizzlePilotRepository на PostgreSQL', () =
         reviewerId: owner.id,
         decision: 'approved',
         rating: 5,
+        rubricAccuracy: 4,
+        rubricStyle: 4,
+        rubricReadability: 5,
+        rubricHooks: 4,
+        rubricCliches: 3,
         createdAt: CREATED_AT,
       });
       await tx.insert(generationRuns).values({
@@ -118,7 +123,12 @@ describe.skipIf(!testDatabaseUrl)('DrizzlePilotRepository на PostgreSQL', () =
       expect(data.articles).toHaveLength(1);
       expect(data.versions).toMatchObject([{ articleId: article.id, number: 1 }]);
       expect(data.reviews).toMatchObject([
-        { articleId: article.id, decision: 'approved', rating: 5 },
+        {
+          articleId: article.id,
+          decision: 'approved',
+          rating: 5,
+          rubric: { accuracy: 4, style: 4, readability: 5, hooks: 4, cliches: 3 },
+        },
       ]);
       expect(data.generationRuns).toMatchObject([
         { articleId: article.id, status: 'needs_input', costUsd: 0.01 },

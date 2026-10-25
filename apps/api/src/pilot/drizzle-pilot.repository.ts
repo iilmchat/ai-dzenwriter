@@ -52,6 +52,11 @@ export class DrizzlePilotRepository implements PilotRepository {
           articleId: reviews.articleId,
           decision: reviews.decision,
           rating: reviews.rating,
+          rubricAccuracy: reviews.rubricAccuracy,
+          rubricStyle: reviews.rubricStyle,
+          rubricReadability: reviews.rubricReadability,
+          rubricHooks: reviews.rubricHooks,
+          rubricCliches: reviews.rubricCliches,
           createdAt: reviews.createdAt,
         })
         .from(reviews)
@@ -82,6 +87,20 @@ export class DrizzlePilotRepository implements PilotRepository {
       articleId: row.articleId,
       decision: row.decision as ReviewDecision,
       rating: row.rating,
+      rubric:
+        row.rubricAccuracy === null ||
+        row.rubricStyle === null ||
+        row.rubricReadability === null ||
+        row.rubricHooks === null ||
+        row.rubricCliches === null
+          ? null
+          : {
+              accuracy: row.rubricAccuracy,
+              style: row.rubricStyle,
+              readability: row.rubricReadability,
+              hooks: row.rubricHooks,
+              cliches: row.rubricCliches,
+            },
       createdAt: row.createdAt,
     }));
     const generationRowsMapped: PilotGenerationRow[] = generationRows.map((row) => ({

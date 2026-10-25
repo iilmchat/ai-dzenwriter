@@ -3,6 +3,7 @@ import {
   countBlockingChecks,
   type PilotMetricsQuery,
   type PilotMetricsResponse,
+  type ReviewRubric,
 } from '@dzenwriter/shared';
 import {
   PILOT_REPOSITORY,
@@ -14,6 +15,21 @@ import {
 
 const HOUR_MS = 60 * 60 * 1000;
 const QUESTION_LIMIT = 10;
+
+// Средние по каждому критерию рубрики редактора (7.4 дизайна): разбивка рядом с общей оценкой.
+function rubricAverages(
+  rubrics: ReviewRubric[],
+): PilotMetricsResponse['articles']['averageRubric'] {
+  const criterion = (pick: (rubric: ReviewRubric) => number): number | null =>
+    rubrics.length === 0 ? null : round(average(rubrics.map(pick)), 2);
+  return {
+    accuracy: criterion((rubric) => rubric.accuracy),
+    style: criterion((rubric) => rubric.style),
+    readability: criterion((rubric) => rubric.readability),
+    hooks: criterion((rubric) => rubric.hooks),
+    cliches: criterion((rubric) => rubric.cliches),
+  };
+}
 
 @Injectable()
 export class PilotService {
@@ -36,6 +52,7 @@ export function buildPilotMetrics(data: PilotData, query: PilotMetricsQuery): Pi
   const firstReviewAt = new Map<string, Date>();
   const firstApprovals = new Map<string, PilotReviewRow>();
   const ratings: number[] = [];
+  const rubrics: ReviewRubric[] = [];
 
   for (const [articleId, reviews] of reviewsByArticle) {
     const ordered = [...reviews].sort(
@@ -53,6 +70,12 @@ export function buildPilotMetrics(data: PilotData, query: PilotMetricsQuery): Pi
         .find((review) => review.decision === 'approved' && review.rating !== null);
       if (latestApproved?.rating !== null && latestApproved?.rating !== undefined) {
         ratings.push(latestApproved.rating);
+      }
+      const latestRubric = [...ordered]
+        .reverse()
+        .find((review) => review.decision === 'approved' && review.rubric !== null);
+      if (latestRubric?.rubric) {
+        rubrics.push(latestRubric.rubric);
       }
     }
   }
@@ -142,6 +165,8 @@ export function buildPilotMetrics(data: PilotData, query: PilotMetricsQuery): Pi
       textChangedAfterGenerationShare: share(textChangedAfterGeneration, withGeneratedVersion),
       averageRating: ratings.length === 0 ? null : round(average(ratings), 2),
       ratedArticles: ratings.length,
+      averageRubric: rubricAverages(rubrics),
+      rubricRatedArticles: rubrics.length,
     },
     generation: {
       runs: runs.length,

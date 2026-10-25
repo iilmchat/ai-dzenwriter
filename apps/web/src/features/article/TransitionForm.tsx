@@ -1,5 +1,6 @@
 import {
   ARTICLE_STATUS_LABELS,
+  REVIEW_RUBRIC_LABELS,
   transitionInputSchema,
   type ArticleDetail,
 } from '@dzenwriter/shared';
@@ -8,6 +9,9 @@ import { transitionArticle } from '../../api/articles';
 import { errorMessage } from '../../api/client';
 import { BUTTON_PRIMARY, INPUT_CLASS, LABEL_CLASS, PANEL_CLASS } from '../../shared/ui/classes';
 import { Notice } from '../../shared/ui/Notice';
+
+type RubricKey = keyof typeof REVIEW_RUBRIC_LABELS;
+const RUBRIC_KEYS = Object.keys(REVIEW_RUBRIC_LABELS) as RubricKey[];
 
 interface TransitionFormProps {
   readonly article: ArticleDetail;
@@ -19,7 +23,13 @@ export function TransitionForm({ article, onDone }: TransitionFormProps) {
   const [target, setTarget] = useState('');
   const [comment, setComment] = useState('');
   const [url, setUrl] = useState('');
-  const [rating, setRating] = useState('');
+  const [rubric, setRubric] = useState<Record<RubricKey, string>>({
+    accuracy: '',
+    style: '',
+    readability: '',
+    hooks: '',
+    cliches: '',
+  });
   const [error, setError] = useState<string | undefined>(undefined);
   const [busy, setBusy] = useState(false);
   const selected = article.transitions.find((option) => option.to === target);
@@ -37,12 +47,20 @@ export function TransitionForm({ article, onDone }: TransitionFormProps) {
       setError('Укажите ссылку на статью в Дзене');
       return;
     }
+    const filled = RUBRIC_KEYS.filter((key) => rubric[key] !== '');
+    if (selected.to === 'approved' && filled.length > 0 && filled.length < RUBRIC_KEYS.length) {
+      setError('Заполните все пять критериев рубрики или оставьте её пустой');
+      return;
+    }
     const parsed = transitionInputSchema.safeParse({
       to: selected.to,
       expectedVersion: article.version,
       comment: comment.trim() || undefined,
       externalUrl: url.trim() || undefined,
-      rating: selected.to === 'approved' && rating !== '' ? Number(rating) : undefined,
+      rubric:
+        selected.to === 'approved' && filled.length === RUBRIC_KEYS.length
+          ? Object.fromEntries(RUBRIC_KEYS.map((key) => [key, Number(rubric[key])]))
+          : undefined,
     });
     if (!parsed.success) {
       setError(parsed.error.issues[0]?.message ?? 'Проверьте поля формы');
@@ -55,7 +73,7 @@ export function TransitionForm({ article, onDone }: TransitionFormProps) {
       setTarget('');
       setComment('');
       setUrl('');
-      setRating('');
+      setRubric({ accuracy: '', style: '', readability: '', hooks: '', cliches: '' });
       onDone(next);
     } catch (cause) {
       setError(errorMessage(cause));
@@ -125,24 +143,34 @@ export function TransitionForm({ article, onDone }: TransitionFormProps) {
             </label>
           ) : null}
           {selected?.to === 'approved' ? (
-            <label className={LABEL_CLASS}>
-              Оценка редактора
-              <select
-                className={INPUT_CLASS}
-                value={rating}
-                onChange={(event) => setRating(event.target.value)}
-              >
-                <option value="">Без оценки</option>
-                {[1, 2, 3, 4, 5].map((value) => (
-                  <option key={value} value={value}>
-                    {value} из 5
-                  </option>
+            <fieldset className="flex flex-col gap-2">
+              <legend className="text-sm font-medium">Рубрика редактора</legend>
+              <div className="grid grid-cols-2 gap-2 sm:grid-cols-5">
+                {RUBRIC_KEYS.map((key) => (
+                  <label key={key} className={LABEL_CLASS}>
+                    {REVIEW_RUBRIC_LABELS[key]}
+                    <select
+                      className={INPUT_CLASS}
+                      value={rubric[key]}
+                      onChange={(event) =>
+                        setRubric((prev) => ({ ...prev, [key]: event.target.value }))
+                      }
+                    >
+                      <option value="">—</option>
+                      {[1, 2, 3, 4, 5].map((value) => (
+                        <option key={value} value={value}>
+                          {value}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
                 ))}
-              </select>
-              <span className="text-xs font-normal text-on-surface-variant">
-                Необязательно. Оценка попадёт в отчёт по пилоту.
+              </div>
+              <span className="text-xs text-on-surface-variant">
+                Необязательно: критерии по разделу 7.4 — точность, стиль, читаемость, крючки,
+                штампы. Общая оценка в отчёте пилота будет средним по рубрике.
               </span>
-            </label>
+            </fieldset>
           ) : null}
           {error ? <Notice tone="error">{error}</Notice> : null}
           <div>

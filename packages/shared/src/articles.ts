@@ -99,13 +99,23 @@ export const publicationUrlSchema = z.url({
   error: 'Ссылка должна вести на dzen.ru или zen.yandex.ru по https',
 });
 
+// Рубрика редактора (раздел 7.4 дизайна): пять критериев, каждый 1–5, заполняются вместе.
+export const reviewRubricSchema = z.object({
+  accuracy: z.number().int().min(1).max(5),
+  style: z.number().int().min(1).max(5),
+  readability: z.number().int().min(1).max(5),
+  hooks: z.number().int().min(1).max(5),
+  cliches: z.number().int().min(1).max(5),
+});
+export type ReviewRubric = z.infer<typeof reviewRubricSchema>;
+
 export const transitionInputSchema = z.object({
   to: z.enum(ARTICLE_STATUSES, { error: 'Неизвестный статус' }),
   expectedVersion: z.number().int().min(1),
   comment: z.string().trim().max(2000, 'Комментарий длиннее 2000 знаков').optional(),
   externalUrl: publicationUrlSchema.optional(),
-  // Оценка редактора при утверждении: 1–5, необязательная.
-  rating: z.number().int().min(1).max(5).optional(),
+  // Оценка редактора при утверждении: рубрика из пяти критериев, необязательная.
+  rubric: reviewRubricSchema.optional(),
 });
 export type TransitionInput = z.infer<typeof transitionInputSchema>;
 
@@ -189,6 +199,7 @@ export const reviewSummarySchema = z.object({
   versionNumber: z.number().int(),
   reviewerLogin: z.string(),
   rating: z.number().int().min(1).max(5).nullable(),
+  rubric: reviewRubricSchema.nullable(),
   createdAt: z.iso.datetime(),
 });
 

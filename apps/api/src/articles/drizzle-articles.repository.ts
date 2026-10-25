@@ -16,6 +16,7 @@ import {
   type CheckSeverity,
   type FactStatus,
   type FactType,
+  type ReviewRubric,
   type Tone,
   type VersionClaim,
   type VersionOrigin,
@@ -46,6 +47,28 @@ const ownerUser = alias(users, 'owner');
 const reviewerUser = alias(users, 'reviewer');
 const authorUser = alias(users, 'author');
 const confirmUser = alias(users, 'confirm');
+
+function rubricFromRow(row: {
+  readonly rubricAccuracy: number | null;
+  readonly rubricStyle: number | null;
+  readonly rubricReadability: number | null;
+  readonly rubricHooks: number | null;
+  readonly rubricCliches: number | null;
+}): ReviewRubric | null {
+  return row.rubricAccuracy === null ||
+    row.rubricStyle === null ||
+    row.rubricReadability === null ||
+    row.rubricHooks === null ||
+    row.rubricCliches === null
+    ? null
+    : {
+        accuracy: row.rubricAccuracy,
+        style: row.rubricStyle,
+        readability: row.rubricReadability,
+        hooks: row.rubricHooks,
+        cliches: row.rubricCliches,
+      };
+}
 
 const articleSelection = {
   id: articles.id,
@@ -307,6 +330,11 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
         comment: reviews.comment,
         versionNumber: reviews.versionNumber,
         rating: reviews.rating,
+        rubricAccuracy: reviews.rubricAccuracy,
+        rubricStyle: reviews.rubricStyle,
+        rubricReadability: reviews.rubricReadability,
+        rubricHooks: reviews.rubricHooks,
+        rubricCliches: reviews.rubricCliches,
         createdAt: reviews.createdAt,
         reviewerId: reviewerUser.id,
         reviewerLogin: reviewerUser.login,
@@ -323,6 +351,7 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
       versionNumber: row.versionNumber,
       reviewer: { id: row.reviewerId, login: row.reviewerLogin, name: row.reviewerName },
       rating: row.rating,
+      rubric: rubricFromRow(row),
       createdAt: row.createdAt,
     }));
   }
@@ -497,6 +526,11 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
       decision: review.decision,
       comment: review.comment,
       rating: review.rating,
+      rubricAccuracy: review.rubric?.accuracy ?? null,
+      rubricStyle: review.rubric?.style ?? null,
+      rubricReadability: review.rubric?.readability ?? null,
+      rubricHooks: review.rubric?.hooks ?? null,
+      rubricCliches: review.rubric?.cliches ?? null,
     });
   }
 

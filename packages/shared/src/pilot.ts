@@ -33,6 +33,15 @@ export const pilotMetricsResponseSchema = z.object({
     textChangedAfterGenerationShare: ratioSchema,
     averageRating: z.number().min(1).max(5).nullable(),
     ratedArticles: z.number().int().nonnegative(),
+    // Средние по рубрике редактора (7.4 дизайна): по критериям, а не только общая оценка.
+    averageRubric: z.object({
+      accuracy: z.number().min(1).max(5).nullable(),
+      style: z.number().min(1).max(5).nullable(),
+      readability: z.number().min(1).max(5).nullable(),
+      hooks: z.number().min(1).max(5).nullable(),
+      cliches: z.number().min(1).max(5).nullable(),
+    }),
+    rubricRatedArticles: z.number().int().nonnegative(),
   }),
   generation: z.object({
     runs: z.number().int().nonnegative(),

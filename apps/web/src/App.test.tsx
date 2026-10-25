@@ -428,6 +428,92 @@ describe('приложение', () => {
     expect(fetchMock).toHaveBeenCalled();
   });
 
+  it('ревьюер заполняет рубрику при утверждении: форма ловит частичный ввод', async () => {
+    const posted: unknown[] = [];
+    const inReview = {
+      ...DETAIL,
+      status: 'in_review',
+      currentVersionNumber: 1,
+      transitions: [
+        { to: 'approved', allowed: true, reason: null, needsComment: false, needsUrl: false },
+      ],
+    };
+    stubApi({
+      [`GET /api/v1/articles/${ARTICLE_ID}`]: () => json(inReview),
+      [`POST /api/v1/articles/${ARTICLE_ID}/transitions`]: (init) => {
+        posted.push(JSON.parse(String(init?.body)));
+        return json(inReview);
+      },
+    });
+    renderAt(`/articles/${ARTICLE_ID}`);
+
+    fireEvent.click(await screen.findByRole('radio', { name: 'Утверждено' }));
+    expect(screen.getByRole('group', { name: 'Рубрика редактора' })).toBeTruthy();
+    fireEvent.change(screen.getByLabelText('Крючки'), { target: { value: '3' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Перевести' }));
+
+    expect(await screen.findByText(/Заполните все пять критериев рубрики/)).toBeTruthy();
+    expect(posted).toHaveLength(0);
+  });
+
+  it('полная рубрика уходит в API, история ревью показывает разбивку', async () => {
+    const posted: unknown[] = [];
+    const inReview = {
+      ...DETAIL,
+      status: 'in_review',
+      currentVersionNumber: 1,
+      transitions: [
+        { to: 'approved', allowed: true, reason: null, needsComment: false, needsUrl: false },
+      ],
+    };
+    const approved = {
+      ...inReview,
+      status: 'approved',
+      reviews: [
+        {
+          decision: 'approved',
+          comment: null,
+          versionNumber: 1,
+          reviewerLogin: 'anna',
+          rating: 4,
+          rubric: { accuracy: 5, style: 4, readability: 5, hooks: 3, cliches: 3 },
+          createdAt: '2026-10-26T09:00:00.000Z',
+        },
+      ],
+    };
+    stubApi({
+      [`GET /api/v1/articles/${ARTICLE_ID}`]: () => json(inReview),
+      [`POST /api/v1/articles/${ARTICLE_ID}/transitions`]: (init) => {
+        posted.push(JSON.parse(String(init?.body)));
+        return json(approved);
+      },
+    });
+    renderAt(`/articles/${ARTICLE_ID}`);
+
+    fireEvent.click(await screen.findByRole('radio', { name: 'Утверждено' }));
+    for (const [label, value] of [
+      ['Точность', '5'],
+      ['Стиль', '4'],
+      ['Читаемость', '5'],
+      ['Крючки', '3'],
+      ['Штампы', '3'],
+    ] as Array<[string, string]>) {
+      fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'Перевести' }));
+
+    await waitFor(() => expect(posted).toHaveLength(1));
+    expect(posted[0]).toMatchObject({
+      to: 'approved',
+      expectedVersion: 1,
+      rubric: { accuracy: 5, style: 4, readability: 5, hooks: 3, cliches: 3 },
+    });
+    expect(await screen.findByText(/оценка 4 из 5/)).toBeTruthy();
+    expect(
+      screen.getByText(/среднее по рубрике: точность 5, стиль 4, читаемость 5, крючки 3, штампы 3/),
+    ).toBeTruthy();
+  });
+
   it('стили и форматы показываются карточками на одной странице', async () => {
     stubApi();
 
@@ -464,6 +550,8 @@ describe('приложение', () => {
             textChangedAfterGenerationShare: 1,
             averageRating: 5,
             ratedArticles: 1,
+            averageRubric: { accuracy: 5, style: 4, readability: 5, hooks: 3, cliches: 4 },
+            rubricRatedArticles: 1,
           },
           generation: {
             runs: 2,
@@ -487,6 +575,9 @@ describe('приложение', () => {
     expect(screen.getByText('Нужен источник')).toBeTruthy();
     expect(screen.getByText('5,0 / 5')).toBeTruthy();
     expect(screen.getByText('1 оценка по шкале 1–5')).toBeTruthy();
+    expect(
+      screen.getByText(/Рубрика редактора \(1 оценка\): точность 5,0 \/ 5 · .*· штампы 4,0 \/ 5/),
+    ).toBeTruthy();
     expect(screen.getAllByText(/0,20/)).toHaveLength(2);
   });
 

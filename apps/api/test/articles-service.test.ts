@@ -585,21 +585,62 @@ describe('переходы статусов', () => {
     const approved = await harness.service.transition(
       harness.actors.reviewer,
       article.id,
-      { to: 'approved', expectedVersion: 1, rating: 5 },
+      {
+        to: 'approved',
+        expectedVersion: 1,
+        rubric: { accuracy: 5, style: 5, readability: 5, hooks: 5, cliches: 5 },
+      },
       NOW,
     );
 
     expect(approved).toMatchObject({
       status: 'approved',
       reviewer: { login: 'boris' },
-      reviews: [expect.objectContaining({ decision: 'approved', rating: 5 })],
+      reviews: [
+        expect.objectContaining({
+          decision: 'approved',
+          rating: 5,
+          rubric: { accuracy: 5, style: 5, readability: 5, hooks: 5, cliches: 5 },
+        }),
+      ],
     });
     expect(harness.repo.reviews).toEqual([
-      expect.objectContaining({ decision: 'approved', versionNumber: 1, rating: 5 }),
+      expect.objectContaining({
+        decision: 'approved',
+        versionNumber: 1,
+        rating: 5,
+        rubric: { accuracy: 5, style: 5, readability: 5, hooks: 5, cliches: 5 },
+      }),
     ]);
   });
 
-  it('оценку нельзя поставить при возврате на доработку', async () => {
+  it('общая оценка из рубрики — округлённое среднее пяти критериев', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'in_review', { currentVersionNumber: 1 });
+    harness.repo.addVersion(article.id);
+
+    await harness.service.transition(
+      harness.actors.reviewer,
+      article.id,
+      {
+        to: 'approved',
+        expectedVersion: 1,
+        rubric: { accuracy: 5, style: 4, readability: 5, hooks: 4, cliches: 3 },
+      },
+      NOW,
+    );
+
+    // Сумма 21 из 25 — среднее 4,2, округляется до 4.
+    expect(harness.repo.reviews).toEqual([
+      expect.objectContaining({
+        rating: 4,
+        rubric: { accuracy: 5, style: 4, readability: 5, hooks: 4, cliches: 3 },
+      }),
+    ]);
+  });
+
+  it('рубрику нельзя заполнить при возврате на доработку', async () => {
     const harness = setup();
     const article = await createArticle(harness);
     harness.repo.setStatus(article.id, 'in_review', { currentVersionNumber: 1 });
@@ -613,7 +654,7 @@ describe('переходы статусов', () => {
           to: 'drafting',
           expectedVersion: 1,
           comment: 'Нужны правки',
-          rating: 4,
+          rubric: { accuracy: 4, style: 4, readability: 4, hooks: 4, cliches: 4 },
         },
         NOW,
       ),

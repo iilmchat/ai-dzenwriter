@@ -8,6 +8,7 @@ import type {
   UserRole,
 } from './enums';
 import type { AuditAction, AuditEntity } from './audit';
+import type { ReviewRubric } from './articles';
 
 // Подписи для интерфейса и сообщений API. Значения перечислений в коде остаются латиницей.
 export const ARTICLE_STATUS_LABELS: Record<ArticleStatus, string> = {
@@ -104,4 +105,13 @@ export const AUDIT_ENTITY_LABELS: Record<AuditEntity, string> = {
   fact: 'Факт',
   article: 'Материал',
   metric_import: 'Импорт метрик',
+};
+
+// Рубрика редактора из раздела 7.4 дизайна: пять критериев ручной оценки.
+export const REVIEW_RUBRIC_LABELS: Record<keyof ReviewRubric, string> = {
+  accuracy: 'Точность',
+  style: 'Стиль',
+  readability: 'Читаемость',
+  hooks: 'Крючки',
+  cliches: 'Штампы',
 };

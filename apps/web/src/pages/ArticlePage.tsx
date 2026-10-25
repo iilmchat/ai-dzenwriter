@@ -2,6 +2,7 @@ import {
   ARTICLE_FORMAT_LABELS,
   ARTICLE_STATUS_LABELS,
   CONTENT_EDITABLE_STATUSES,
+  REVIEW_RUBRIC_LABELS,
   TONE_LABELS,
   type ArticleDetail,
   type VersionDetail,
@@ -51,6 +52,18 @@ const PUBLICATION_LABELS: Record<string, string> = {
   scheduled: 'Запланирована',
   published: 'Опубликована',
 };
+
+// Разбивка рубрики редактора в истории ревью: «точность 5, стиль 4 …» по разделу 7.4 дизайна.
+function formatRubric(rubric: ArticleDetail['reviews'][number]['rubric']): string {
+  if (!rubric) {
+    return '';
+  }
+  return (
+    Object.entries(REVIEW_RUBRIC_LABELS)
+      .map(([key, label]) => `${label.toLowerCase()} ${rubric[key as keyof typeof rubric]}`)
+      .join(', ') ?? ''
+  );
+}
 
 export function ArticlePage() {
   const { id = '' } = useParams();
@@ -273,6 +286,7 @@ function ReviewsPanel({ article }: { readonly article: ArticleDetail }) {
               {REVIEW_LABELS[review.decision] ?? review.decision}, версия {review.versionNumber},{' '}
               {review.reviewerLogin}, {formatDateTime(review.createdAt)}
               {review.rating !== null ? `, оценка ${review.rating} из 5` : ''}
+              {review.rubric ? ` (среднее по рубрике: ${formatRubric(review.rubric)})` : ''}
               {review.comment ? `. Комментарий: ${review.comment}` : ''}
             </li>
           ))}

@@ -1,4 +1,9 @@
-import type { GenerationStatus, ReviewDecision, VersionOrigin } from '@dzenwriter/shared';
+import type {
+  GenerationStatus,
+  ReviewDecision,
+  ReviewRubric,
+  VersionOrigin,
+} from '@dzenwriter/shared';
 import type { VersionCheck } from '../articles/article-rules';
 
 export const PILOT_REPOSITORY = Symbol('PILOT_REPOSITORY');
@@ -27,6 +32,7 @@ export interface PilotReviewRow {
   readonly articleId: string;
   readonly decision: ReviewDecision;
   readonly rating: number | null;
+  readonly rubric: ReviewRubric | null;
   readonly createdAt: Date;
 }
 

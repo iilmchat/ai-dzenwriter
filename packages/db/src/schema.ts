@@ -294,12 +294,28 @@ export const reviews = pgTable(
     comment: text('comment'),
     // Оценка редактора по итогам ревью: 1–5, необязательная.
     rating: smallint('rating'),
+    // Рубрика редактора (раздел 7.4 дизайна): пять критериев 1–5, заполняются вместе.
+    rubricAccuracy: smallint('rubric_accuracy'),
+    rubricStyle: smallint('rubric_style'),
+    rubricReadability: smallint('rubric_readability'),
+    rubricHooks: smallint('rubric_hooks'),
+    rubricCliches: smallint('rubric_cliches'),
     createdAt: createdAt(),
   },
   (table) => [
     check('reviews_decision_check', oneOf(table.decision.name, REVIEW_DECISIONS)),
     check('reviews_comment_check', sql.raw("decision = 'approved' OR comment IS NOT NULL")),
     check('reviews_rating_check', sql`rating is null or (rating >= 1 and rating <= 5)`),
+    check(
+      'reviews_rubric_check',
+      sql`(
+        (rubric_accuracy is null or (rubric_accuracy >= 1 and rubric_accuracy <= 5)) and
+        (rubric_style is null or (rubric_style >= 1 and rubric_style <= 5)) and
+        (rubric_readability is null or (rubric_readability >= 1 and rubric_readability <= 5)) and
+        (rubric_hooks is null or (rubric_hooks >= 1 and rubric_hooks <= 5)) and
+        (rubric_cliches is null or (rubric_cliches >= 1 and rubric_cliches <= 5))
+      )`,
+    ),
   ],
 );
 

@@ -63,18 +63,21 @@ function data(): PilotData {
         articleId: 'a',
         decision: 'changes_requested',
         rating: null,
+        rubric: null,
         createdAt: JAN_1_13,
       },
       {
         articleId: 'a',
         decision: 'approved',
         rating: 5,
+        rubric: { accuracy: 4, style: 4, readability: 5, hooks: 4, cliches: 3 },
         createdAt: JAN_2_10,
       },
       {
         articleId: 'b',
         decision: 'approved',
         rating: 3,
+        rubric: null,
         createdAt: JAN_3_10,
       },
     ],
@@ -122,6 +125,8 @@ describe('показатели пилота', () => {
       textChangedAfterGenerationShare: 0.5,
       averageRating: 4,
       ratedArticles: 2,
+      averageRubric: { accuracy: 4, style: 4, readability: 5, hooks: 4, cliches: 3 },
+      rubricRatedArticles: 1,
     });
     expect(report.generation).toMatchObject({
       runs: 3,
@@ -151,6 +156,7 @@ describe('показатели пилота', () => {
       gateCaughtBeforeReviewShare: null,
       textChangedAfterGenerationShare: null,
       averageRating: null,
+      rubricRatedArticles: 0,
     });
     expect(report.generation).toMatchObject({
       runs: 0,

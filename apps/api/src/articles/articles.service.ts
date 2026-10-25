@@ -333,8 +333,8 @@ export class ArticlesService {
     if (rule.needsUrl === true && !input.externalUrl) {
       throw new UnprocessableEntityException('Укажите ссылку на статью в Дзене');
     }
-    if (input.rating !== undefined && rule.decision !== 'approved') {
-      throw new UnprocessableEntityException('Оценку 1–5 можно поставить только при утверждении');
+    if (input.rubric !== undefined && rule.decision !== 'approved') {
+      throw new UnprocessableEntityException('Рубрику можно заполнить только при утверждении');
     }
 
     const context = await this.gateContext(view);
@@ -364,7 +364,9 @@ export class ArticlesService {
           reviewerId: actor.id,
           decision: rule.decision,
           comment: input.comment ?? null,
-          rating: input.rating ?? null,
+          // Общая оценка в пилоте — среднее по рубрике, округлённое до целого.
+          rating: rubricRating(input.rubric),
+          rubric: input.rubric ?? null,
         });
       }
       if (rule.to === 'scheduled' || rule.to === 'published') {
@@ -925,6 +927,15 @@ function transitionChanges(rule: TransitionRule, actor: Actor, now: Date): Artic
     ...(rule.decision !== undefined ? { reviewerId: actor.id } : {}),
     ...(rule.archives === true ? { archivedAt: now } : {}),
   };
+}
+
+// Общая оценка редактора: среднее по рубрике из пяти критериев (раздел 7.4 дизайна).
+function rubricRating(rubric: TransitionInput['rubric']): number | null {
+  if (rubric === undefined) {
+    return null;
+  }
+  const sum = rubric.accuracy + rubric.style + rubric.readability + rubric.hooks + rubric.cliches;
+  return Math.round(sum / 5);
 }
 
 function changedFields(input: UpdateArticleInput): string[] {

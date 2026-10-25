@@ -177,15 +177,20 @@
 
 ### reviews
 
-| Поле             | Тип                  | Примечание                                           |
-| ---------------- | -------------------- | ---------------------------------------------------- |
-| `id`             | uuid, PK             |                                                      |
-| `article_id`     | uuid, FK на articles |                                                      |
-| `version_number` | int                  | Версия, которую проверяли                            |
-| `reviewer_id`    | uuid, FK на users    | Не равен `owner_id` материала: проверяется в сервисе |
-| `decision`       | review_decision      |                                                      |
-| `comment`        | text, null           | Обязателен при `changes_requested`                   |
-| `rating`         | smallint, null       | Оценка редактора 1–5; необязательная                 |
+| Поле                 | Тип                  | Примечание                                                                             |
+| -------------------- | -------------------- | -------------------------------------------------------------------------------------- |
+| `id`                 | uuid, PK             |                                                                                        |
+| `article_id`         | uuid, FK на articles |                                                                                        |
+| `version_number`     | int                  | Версия, которую проверяли                                                              |
+| `reviewer_id`        | uuid, FK на users    | Не равен `owner_id` материала: проверяется в сервисе                                   |
+| `decision`           | review_decision      |                                                                                        |
+| `comment`            | text, null           | Обязателен при `changes_requested`                                                     |
+| `rating`             | smallint, null       | Оценка редактора 1–5; необязательная; при рубрике — округлённое среднее пяти критериев |
+| `rubric_accuracy`    | smallint, null       | Рубрика редактора (7.4): точность 1–5; пять колонок заполняются вместе                 |
+| `rubric_style`       | smallint, null       | Стиль 1–5                                                                              |
+| `rubric_readability` | smallint, null       | Читаемость 1–5                                                                         |
+| `rubric_hooks`       | smallint, null       | Крючки 1–5                                                                             |
+| `rubric_cliches`     | smallint, null       | Штампы 1–5                                                                             |
 
 ### publications
 

@@ -75,6 +75,7 @@ export function toReviewSummary(record: ReviewRecord): ArticleDetail['reviews'][
     versionNumber: record.versionNumber,
     reviewerLogin: record.reviewer.login,
     rating: record.rating,
+    rubric: record.rubric,
     createdAt: record.createdAt.toISOString(),
   };
 }

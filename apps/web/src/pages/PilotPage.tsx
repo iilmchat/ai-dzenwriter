@@ -1,4 +1,4 @@
-import type { PilotMetricsResponse } from '@dzenwriter/shared';
+import { REVIEW_RUBRIC_LABELS, type PilotMetricsResponse } from '@dzenwriter/shared';
 import { type FormEvent, useEffect, useState } from 'react';
 import { errorMessage } from '../api/client';
 import { fetchPilotMetrics, type PilotFilters } from '../api/pilot';
@@ -133,6 +133,13 @@ function PilotReport({ metrics }: { readonly metrics: PilotMetricsResponse }) {
             hint={`${articles.approved} утверждено`}
           />
         </div>
+        {articles.rubricRatedArticles > 0 ? (
+          <p className="text-sm text-on-surface-variant">
+            Рубрика редактора ({articles.rubricRatedArticles}{' '}
+            {pluralEvaluations(articles.rubricRatedArticles)}):{' '}
+            {formatRubricAverages(articles.averageRubric)}
+          </p>
+        ) : null}
       </section>
 
       <section aria-labelledby="pilot-generation-title" className="flex flex-col gap-4">
@@ -271,6 +278,15 @@ function pluralGenerated(count: number): string {
 
 function formatRating(value: number | null): string {
   return value === null ? '—' : `${ratingFormat.format(value)} / 5`;
+}
+
+// Средние по критериям рубрики: «точность 4.2 / 5 · стиль 3.8 / 5 …».
+function formatRubricAverages(rubric: PilotMetricsResponse['articles']['averageRubric']): string {
+  const parts = (Object.keys(REVIEW_RUBRIC_LABELS) as Array<keyof typeof rubric>).map((key) => {
+    const value = rubric[key];
+    return `${REVIEW_RUBRIC_LABELS[key].toLowerCase()} ${value === null ? '—' : `${ratingFormat.format(value)} / 5`}`;
+  });
+  return parts.join(' · ');
 }
 
 function formatMoney(value: number | null): string {

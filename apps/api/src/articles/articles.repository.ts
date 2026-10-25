@@ -6,6 +6,7 @@ import type {
   PublicationChannel,
   PublicationStatus,
   ReviewDecision,
+  ReviewRubric,
   Tone,
   VersionClaim,
   VersionOrigin,
@@ -80,6 +81,7 @@ export interface ReviewRecord {
   readonly versionNumber: number;
   readonly reviewer: PersonRef;
   readonly rating: number | null;
+  readonly rubric: ReviewRubric | null;
   readonly createdAt: Date;
 }
 
@@ -156,6 +158,7 @@ export interface NewReview {
   readonly decision: ReviewDecision;
   readonly comment: string | null;
   readonly rating: number | null;
+  readonly rubric: ReviewRubric | null;
 }
 
 export interface NewPublication {
