@@ -15,6 +15,7 @@
     "dev:session": "tsx --env-file-if-exists=../../.env scripts/dev-session.ts",
     "dev:revoke-sessions": "tsx --env-file-if-exists=../../.env scripts/revoke-sessions.ts",
     "llm:probe": "tsx --env-file-if-exists=../../.env scripts/llm-probe.ts",
+    "golden:run": "tsx --env-file-if-exists=../../.env scripts/golden-run.ts",
     "e2e:setup": "tsx --env-file-if-exists=../../.env scripts/e2e-setup.ts",
     "sessions:cleanup": "tsx --env-file-if-exists=../../.env src/scripts/cleanup-sessions.ts",
     "config:validate": "tsx --env-file-if-exists=../../.env src/scripts/validate-config.ts",
