@@ -250,6 +250,9 @@ describe.skipIf(!testDatabaseUrl)('DrizzleGenerationRepository на PostgreSQL',
         ownerId: owner.id,
       });
 
+      // Сумма считается по всем пользователям базы, поэтому проверяем дельту от своего запуска.
+      const costBefore = await repo.sumCostSince(new Date('2026-01-01T00:00:00Z'));
+
       const runId = await repo.insertRun({
         articleId,
         provider: 'mock',
@@ -288,7 +291,9 @@ describe.skipIf(!testDatabaseUrl)('DrizzleGenerationRepository на PostgreSQL',
 
       expect(await repo.countRunsSince(owner.id, new Date('2026-01-01T00:00:00Z'))).toBe(1);
       expect(await repo.countRunsSince(owner.id, new Date('2027-01-01T00:00:00Z'))).toBe(0);
-      expect(await repo.sumCostSince(new Date('2026-01-01T00:00:00Z'))).toBe('0.2500');
+      const costAfter = await repo.sumCostSince(new Date('2026-01-01T00:00:00Z'));
+      expect(Number(costAfter) - Number(costBefore)).toBeCloseTo(0.25);
+      expect(await repo.sumCostSince(new Date('2027-01-01T00:00:00Z'))).toBe('0');
       const runs = await repo.listRuns(articleId, 10);
       expect(runs).toHaveLength(1);
       const rows = await tx.select().from(generationRuns);

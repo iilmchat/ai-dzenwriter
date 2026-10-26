@@ -1,17 +1,10 @@
-import { expect, test, type Browser, type BrowserContext } from '@playwright/test';
-import { execSync } from 'node:child_process';
+import { expect, test } from '@playwright/test';
+import { loadSetup, signedInContext } from './helpers';
 
-const SESSION_COOKIE = 'dzw_session';
 // Все тестовые материалы начинаются с E2E: e2e-setup убирает их в архив перед прогоном.
 const E2E_TOPIC_PREFIX = 'E2E-main-flow:';
 
-interface E2ESetup {
-  readonly authorToken: string;
-  readonly reviewerToken: string;
-  readonly factId: string;
-}
-
-let setup: E2ESetup;
+let setup: ReturnType<typeof loadSetup>;
 
 test.beforeAll(() => {
   setup = loadSetup();
@@ -145,32 +138,3 @@ test('материал проходит путь от создания до пу
     await authorContext.close();
   }
 });
-
-async function signedInContext(
-  browser: Browser,
-  baseURL: string,
-  token: string,
-): Promise<BrowserContext> {
-  const context = await browser.newContext({ baseURL });
-  await context.addCookies([{ name: SESSION_COOKIE, value: token, url: baseURL }]);
-  return context;
-}
-
-// Скрипт создаёт изолированных E2E-пользователей, факт и сессии. Вывод содержит одну
-// JSON-строку последней; префикс pnpm с командой не мешает разбору.
-function loadSetup(): E2ESetup {
-  const output = execSync('pnpm --filter @dzenwriter/api e2e:setup', {
-    cwd: process.cwd(),
-    encoding: 'utf8',
-    env: process.env,
-    stdio: ['ignore', 'pipe', 'inherit'],
-  });
-  const line = output
-    .split(/\r?\n/)
-    .map((item) => item.trim())
-    .find((item) => item.startsWith('{'));
-  if (!line) {
-    throw new Error('E2E setup не вернул данные');
-  }
-  return JSON.parse(line) as E2ESetup;
-}

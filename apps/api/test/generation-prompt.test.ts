@@ -71,6 +71,63 @@ describe('сборка промпта', () => {
     expect(renderFacts([])).toBe('(одобренных фактов нет)');
   });
 
+  // Snapshot-тесты: любое изменение промпта, стиля или сборки видно в PR целиком.
+  describe('snapshot собранного промпта', () => {
+    const factForSnapshot = [
+      {
+        factId: '11111111-1111-4111-8111-111111111111',
+        label: 'F1',
+        type: 'news_source' as const,
+        text: 'Регулирование ИИ в ЕС принято в октябре 2026 года.',
+        sourceName: 'Reuters',
+        sourceUrl: 'https://example.com/eu-ai-act',
+        sourcePublishedAt: '2026-10-20',
+      },
+      {
+        factId: '22222222-2222-4222-8222-222222222222',
+        label: 'F2',
+        type: 'company_fact' as const,
+        text: 'Мы внедрили проверку фактов в конвейер материалов.',
+        sourceName: null,
+        sourceUrl: null,
+        sourcePublishedAt: null,
+      },
+    ];
+
+    it('renderFacts стабилен', () => {
+      expect(renderFacts(factForSnapshot)).toMatchSnapshot();
+    });
+
+    it.each([
+      ['industry-news', 'news'],
+      ['company-achievements', 'article'],
+      ['personal-experience', 'article'],
+      ['product-description', 'article'],
+    ] as const)('%s — полный текст промпта стабилен', (styleId, formatId) => {
+      const style = config.styles.get(styleId);
+      const format = config.formats.formats[formatId];
+      if (!style || !format) {
+        throw new Error(`Нет стиля ${styleId} или формата ${formatId}`);
+      }
+      const built = buildPrompt({
+        basePrompt,
+        style,
+        format,
+        formatId,
+        topic: 'Регулирование ИИ в ЕС',
+        keywords: ['ИИ', 'регулирование'],
+        tone: 'neutral',
+        lengthMin: 4000,
+        lengthMax: 6000,
+        productName: styleId === 'product-description' ? 'Демо-продукт' : null,
+        facts: styleId === 'product-description' ? [] : factForSnapshot,
+        today: '2026-10-22',
+      });
+      expect(built.text).not.toMatch(/\{\{\w+\}\}/);
+      expect(built.text).toMatchSnapshot();
+    });
+  });
+
   it('версия промпта меняется вместе со стилем и стабильна иначе', () => {
     const style = config.styles.get('industry-news');
     if (!style) {

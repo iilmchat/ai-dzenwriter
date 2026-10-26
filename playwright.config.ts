@@ -13,6 +13,7 @@ const isCi = Boolean(process.env.CI);
 
 export default defineConfig({
   testDir: './e2e',
+  globalSetup: './e2e/global-setup.ts',
   fullyParallel: true,
   forbidOnly: isCi,
   retries: isCi ? 1 : 0,
@@ -20,6 +21,8 @@ export default defineConfig({
   use: {
     baseURL: webUrl,
     trace: 'on-first-retry',
+    // Действие падает с явной причиной через 15 секунд вместо молчаливого ожидания до конца теста.
+    actionTimeout: 15_000,
   },
   projects: [{ name: 'chromium', use: { ...devices['Desktop Chrome'] } }],
   webServer: [
@@ -32,6 +35,8 @@ export default defineConfig({
         WEB_ORIGIN: webUrl,
         GITHUB_CLIENT_ID: '',
         GITHUB_CLIENT_SECRET: '',
+        // E2E не зависит от внешнего провайдера: даже с настроенным ключом в .env — mock.
+        LLM_PROVIDER: 'mock',
       },
       reuseExistingServer: !isCi,
       timeout: 120_000,

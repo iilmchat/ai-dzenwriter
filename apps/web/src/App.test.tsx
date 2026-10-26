@@ -531,6 +531,61 @@ describe('приложение', () => {
     expect(await screen.findByText('Этот раздел недоступен для вашей роли.')).toBeTruthy();
   });
 
+  it('администратор меняет роль и отключает пользователя из таблицы', async () => {
+    const patches: Array<{ id: string; body: unknown }> = [];
+    const admin = {
+      id: ADMIN.id,
+      login: ADMIN.login,
+      name: ADMIN.name,
+      role: 'admin',
+      disabled: false,
+      createdAt: '2026-10-20T10:00:00.000Z',
+    };
+    const vera = {
+      id: REVIEWER.id,
+      login: REVIEWER.login,
+      name: REVIEWER.name,
+      role: 'reviewer',
+      disabled: false,
+      createdAt: '2026-10-21T10:00:00.000Z',
+    };
+    stubApi({
+      'GET /api/v1/users': () => json({ items: [admin, vera] }),
+      [`PATCH /api/v1/users/${REVIEWER.id}`]: (init) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        patches.push({ id: REVIEWER.id, body });
+        return json({
+          ...vera,
+          ...body,
+        });
+      },
+    });
+
+    renderAt('/admin/users');
+
+    // Свою строку менять нельзя: селект и кнопка выключены.
+    const annaRow = await screen.findByRole('row', { name: /anna \(это вы\)/ });
+    expect(
+      (within(annaRow).getByRole('combobox', { name: 'Роль: anna' }) as HTMLSelectElement).disabled,
+    ).toBe(true);
+    expect(
+      (within(annaRow).getByRole('button', { name: 'Отключить' }) as HTMLButtonElement).disabled,
+    ).toBe(true);
+
+    // Роль Веры поднимается до администратора: PATCH уходит с ролью.
+    fireEvent.change(await screen.findByRole('combobox', { name: 'Роль: vera' }), {
+      target: { value: 'admin' },
+    });
+    await waitFor(() => expect(patches).toEqual([{ id: REVIEWER.id, body: { role: 'admin' } }]));
+
+    // Отключение: PATCH с disabled и статус в таблице меняется.
+    fireEvent.click(
+      within(screen.getByRole('row', { name: /vera/ })).getByRole('button', { name: 'Отключить' }),
+    );
+    await waitFor(() => expect(patches[1]).toEqual({ id: REVIEWER.id, body: { disabled: true } }));
+    expect(screen.getByRole('row', { name: /vera/ }).textContent).toContain('отключён');
+  });
+
   it('показатели пилота доступны администратору', async () => {
     stubApi({
       'GET /api/v1/pilot/metrics': () =>
