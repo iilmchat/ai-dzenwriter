@@ -44,6 +44,7 @@ export const AUDIT_ACTIONS = [
   'user.role_change',
   'user.disable',
   'user.enable',
+  'user.membership_lost',
   'product.create',
   'product.update',
   'fact.create',

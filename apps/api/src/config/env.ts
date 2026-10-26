@@ -41,6 +41,9 @@ const envSchema = z.object({
   RATE_LIMIT_MAX: z.coerce.number().int().positive().default(300),
   // Жёстче лимит на GitHub-вход: защита эндов входа от перебора.
   AUTH_RATE_LIMIT_MAX: z.coerce.number().int().positive().default(30),
+  // Серверный токен с read:org для периодической перепроверки членства (P1-13).
+  // Без него перепроверка не активна: это не ошибка запуска.
+  GITHUB_ORG_TOKEN: optionalText,
 });
 
 export type Env = z.infer<typeof envSchema>;

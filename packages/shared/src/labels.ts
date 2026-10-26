@@ -69,6 +69,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   'user.role_change': 'Смена роли',
   'user.disable': 'Отключение пользователя',
   'user.enable': 'Включение пользователя',
+  'user.membership_lost': 'Выведен из организации',
   'product.create': 'Создание продукта',
   'product.update': 'Правка продукта',
   'fact.create': 'Создание факта',
