@@ -1,5 +1,7 @@
 // Прогон golden set против настоящего API (docs/00-design, раздел 7.4).
 // Запуск: pnpm --filter @dzenwriter/api golden:run
+// Частичный прогон (например, после обрыва сети): добавить --briefs=<id,...>,
+// по умолчанию гоняются все 20 брифов.
 // Требования: стенд поднят (docker compose up -d), в .env — DATABASE_URL и настоящий провайдер.
 // Скрипт сеет сессии напрямую в базу (как dev-session) и ходит реальным HTTP API:
 // факты → одобрение ревьюером → материал → привязки → генерация → проверка версии → отчёт.
@@ -310,10 +312,40 @@ function share(part: number, total: number): number {
   return Number((part / Math.max(1, total)).toFixed(4));
 }
 
+// Идентификаторы брифов из командной строки: --briefs=exp-05,prod-01.
+// Без аргумента — полный прогон по всем брифам набора.
+function parseBriefFilter(argv: readonly string[]): readonly string[] | undefined {
+  const prefix = '--briefs=';
+  const arg = argv.find((value) => value.startsWith(prefix));
+  if (arg === undefined) {
+    return undefined;
+  }
+  const ids = arg
+    .slice(prefix.length)
+    .split(',')
+    .map((id) => id.trim())
+    .filter((id) => id.length > 0);
+  if (ids.length === 0) {
+    throw new Error('Фильтр --briefs пуст: перечислите идентификаторы брифов через запятую');
+  }
+  return ids;
+}
+
 async function main(): Promise<void> {
   const config = goldenSetSchema.parse(
     parseYaml(readFileSync(join(process.cwd(), '../../config/golden-set.yaml'), 'utf8')),
   );
+
+  const briefFilter = parseBriefFilter(process.argv.slice(2));
+  const unknown =
+    briefFilter?.filter((id) => !config.briefs.some((brief) => brief.id === id)) ?? [];
+  if (unknown.length > 0) {
+    throw new Error(`В наборе нет брифов из фильтра --briefs: ${unknown.join(', ')}`);
+  }
+  const briefs =
+    briefFilter === undefined
+      ? config.briefs
+      : config.briefs.filter((brief) => briefFilter.includes(brief.id));
 
   await ensureUser(author, 'author');
   await ensureUser(reviewer, 'reviewer');
@@ -325,10 +357,10 @@ async function main(): Promise<void> {
     throw new Error('На стенде нет продукта demo-product: сеять через интерфейс или seed');
   }
 
-  console.log(`Прогон golden set: ${config.briefs.length} брифов против ${baseUrl}`);
+  console.log(`Прогон golden set: ${briefs.length} брифов против ${baseUrl}`);
   const runStarted = Date.now();
   const results: Outcome[] = [];
-  for (const brief of config.briefs) {
+  for (const brief of briefs) {
     console.log(`▸ ${brief.id} (${brief.styleId})`);
     results.push(await runBrief(brief, demo.id));
   }
@@ -346,14 +378,15 @@ async function main(): Promise<void> {
     baseUrl,
     seconds: Math.round((Date.now() - runStarted) / 1000),
     summary: {
-      briefs: config.briefs.length,
+      briefs: briefs.length,
+      filter: briefFilter ?? null,
       succeeded: succeeded.length,
       needsInput: needsInput.length,
       failed: failed.length,
       errors: errors.length,
       versionsWithoutBlocking: clean.length,
       versionsWithoutBlockingShare: share(clean.length, succeeded.length),
-      needsInputShare: share(needsInput.length, config.briefs.length),
+      needsInputShare: share(needsInput.length, briefs.length),
       lengthOk: lengthOk.length,
       totalCostUsd: Number(totalCost.toFixed(4)),
     },
