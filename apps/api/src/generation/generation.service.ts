@@ -30,7 +30,7 @@ import { ChecksService } from '../checks/checks.service';
 import type { AppConfig } from '../config/app-config';
 import { describeIssues } from '../config/errors';
 import type { LlmConfig } from '../config/llm-config';
-import { APP_CONFIG, BASE_PROMPT, LLM_CONFIG } from '../config/tokens';
+import { APP_CONFIG, BASE_PROMPT, EXPAND_PROMPT, LLM_CONFIG } from '../config/tokens';
 import { moscowDayStart, todayInMoscow } from '../common/moscow-time';
 import {
   GENERATION_REPOSITORY,
@@ -47,7 +47,12 @@ import {
   type LlmUsage,
 } from './llm-provider';
 import { GENERATION_OUTPUT_JSON_SCHEMA } from './output-schema';
-import { buildPrompt, type BuiltPrompt, type PromptFact } from './prompt-builder';
+import {
+  buildExpandPrompt,
+  buildPrompt,
+  type BuiltPrompt,
+  type PromptFact,
+} from './prompt-builder';
 
 const TEMPERATURE = 0.7;
 const RUNS_SHOWN = 20;
@@ -107,6 +112,7 @@ export class GenerationService {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(LLM_CONFIG) private readonly llm: LlmConfig,
     @Inject(BASE_PROMPT) private readonly basePrompt: string,
+    @Inject(EXPAND_PROMPT) private readonly expandPrompt: string,
   ) {}
 
   // Фаза до потока: все проверки, которые должны ответить обычной ошибкой, а не событием SSE.
@@ -289,6 +295,12 @@ export class GenerationService {
         return result;
       }
 
+      // Доведение объёма: если модель сдала текст короче нижней границы формата —
+      // один дополнительный проход «разверни фактами». Не добрали — остаётся первая версия.
+      const expanded = await this.expandOutput(plan, emit, output, usage, controller.signal);
+      output = expanded.output;
+      usage = expanded.usage;
+
       // Проверки считаются до сохранения версии: блокирующие результаты
       // должны быть в версии, а не в ответе.
       await emit({ type: 'stage', stage: { stage: 'checks', status: 'running' } });
@@ -386,7 +398,12 @@ export class GenerationService {
       };
       await emit({ type: 'result', result });
       return result;
-    } catch {
+    } catch (error) {
+      // Отмену из доведения объёма не глотаем: пользователь нажал «отменить»,
+      // и запуск должен закрыться как отменённый, а не как сбой.
+      if (error instanceof LlmProviderError && error.code === 'aborted') {
+        return await this.finishCancelled(plan, emit, usage, startedAt);
+      }
       // Непредвиденная ошибка не должна оставлять запуск «висящим» в базе.
       return await this.finishFailed(plan, emit, 'unavailable', usage, startedAt);
     } finally {
@@ -569,6 +586,123 @@ export class GenerationService {
         content: `${base}\n\nПредыдущий ответ не прошёл проверку:\n${schemaError}\n\nИсправь ответ и верни только JSON по схеме.`,
       },
     ];
+  }
+
+  // Доведение объёма вторым проходом. Запускается только когда текст короче нижней
+  // границы формата, и не больше одного прохода. Расширить не удалось — остаётся
+  // первая версия: сбой доведения не роняет успешный запуск.
+  private async expandOutput(
+    plan: GenerationPlan & { kind: 'run' },
+    emit: GenerationEmitter,
+    output: GenerationOutput,
+    usage: LlmUsage,
+    signal: AbortSignal,
+  ): Promise<{ readonly output: GenerationOutput; readonly usage: LlmUsage }> {
+    const format = plan.context.format;
+    const first = output.article_markdown;
+    if (first.length >= format.length.min) {
+      await emit({
+        type: 'stage',
+        stage: {
+          stage: 'expand',
+          status: 'skipped',
+          message: `Объём ${first.length} знаков: нижняя граница ${format.length.min} выполнена`,
+        },
+      });
+      return { output, usage };
+    }
+    await emit({
+      type: 'stage',
+      stage: {
+        stage: 'expand',
+        status: 'running',
+        message: `Объём ${first.length} знаков ниже нижней границы ${format.length.min}: разворачиваем фактами`,
+      },
+    });
+
+    const messages = this.buildMessages(
+      buildExpandPrompt({
+        expandPrompt: this.expandPrompt,
+        format,
+        topic: plan.context.article.topic,
+        title: output.title,
+        markdown: first,
+        facts: plan.context.facts,
+      }),
+    );
+    let schemaError = '';
+    let expanded: GenerationOutput | undefined;
+    for (let attempt = 1; attempt <= 2; attempt += 1) {
+      const request = attempt === 1 ? messages : this.retryMessages(messages, schemaError);
+      let response;
+      try {
+        response = await this.provider.generate({
+          messages: request,
+          jsonSchema: GENERATION_OUTPUT_JSON_SCHEMA,
+          temperature: TEMPERATURE,
+          signal,
+        });
+      } catch (error) {
+        // Отмена — не «неудача доведения»: пусть run() закроет запуск как отменённый.
+        if (error instanceof LlmProviderError && error.code === 'aborted') {
+          throw error;
+        }
+        const code = error instanceof LlmProviderError ? error.code : 'unavailable';
+        await emit({
+          type: 'stage',
+          stage: {
+            stage: 'expand',
+            status: 'failed',
+            message: `${providerMessage(code)}. Оставляем исходный текст`,
+          },
+        });
+        return { output, usage };
+      }
+      usage = {
+        inputTokens: usage.inputTokens + response.usage.inputTokens,
+        outputTokens: usage.outputTokens + response.usage.outputTokens,
+      };
+      const parsed = parseModelOutput(response.content);
+      if (parsed.ok) {
+        expanded = parsed.output;
+        break;
+      }
+      schemaError = parsed.error;
+    }
+
+    if (expanded === undefined) {
+      await emit({
+        type: 'stage',
+        stage: {
+          stage: 'expand',
+          status: 'failed',
+          message: 'Расширение не удалось: ответ не прошёл схему. Оставляем исходный текст',
+        },
+      });
+      return { output, usage };
+    }
+    const grown = expanded.article_markdown;
+    if (grown.length <= first.length) {
+      await emit({
+        type: 'stage',
+        stage: {
+          stage: 'expand',
+          status: 'failed',
+          message: `Расширение не дало объёма: ${grown.length} знаков. Оставляем исходный текст`,
+        },
+      });
+      return { output, usage };
+    }
+    await emit({
+      type: 'stage',
+      stage: {
+        stage: 'expand',
+        status: 'done',
+        message: `Объём доведён: ${first.length} → ${grown.length} знаков`,
+        tokens: usage.outputTokens,
+      },
+    });
+    return { output: expanded, usage };
   }
 
   private async failRun(

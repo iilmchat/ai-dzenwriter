@@ -2,7 +2,7 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
 import { ConfigError } from '../src/config/errors';
-import { loadBasePrompt, resolvePromptsDir } from '../src/config/prompt-config';
+import { loadBasePrompt, loadExpandPrompt, resolvePromptsDir } from '../src/config/prompt-config';
 
 describe('загрузка конфигурации стилей и форматов', () => {
   it('находит config/ репозитория и загружает все стили и форматы', () => {
@@ -49,5 +49,13 @@ describe('загрузка конфигурации стилей и формат
     for (const phrase of config.checks.banned_phrases) {
       expect(prompt.toLowerCase()).toContain(phrase.toLowerCase());
     }
+  });
+
+  it('промпт доведения объёма загружается и задаёт цель расширения', () => {
+    const expand = loadExpandPrompt(resolvePromptsDir());
+
+    expect(expand).toContain('Целевой объём: от {{target_chars}}');
+    expect(expand).toContain('{{article_markdown}}');
+    expect(expand.toLowerCase()).toContain('нет факта — нет утверждения');
   });
 });

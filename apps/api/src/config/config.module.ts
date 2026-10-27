@@ -3,8 +3,8 @@ import { loadAppConfig, resolveConfigDir, type AppConfig } from './app-config';
 import { resolveAuthConfig, type AuthConfig } from './auth-config';
 import { parseEnv, type Env } from './env';
 import { resolveLlmConfig, type LlmConfig } from './llm-config';
-import { loadBasePrompt, resolvePromptsDir } from './prompt-config';
-import { APP_CONFIG, AUTH_CONFIG, BASE_PROMPT, ENV, LLM_CONFIG } from './tokens';
+import { loadBasePrompt, loadExpandPrompt, resolvePromptsDir } from './prompt-config';
+import { APP_CONFIG, AUTH_CONFIG, BASE_PROMPT, ENV, EXPAND_PROMPT, LLM_CONFIG } from './tokens';
 
 // Конфигурация читается при старте: если окружение, config/ или prompts/ неверны,
 // сервис не запустится.
@@ -32,7 +32,12 @@ import { APP_CONFIG, AUTH_CONFIG, BASE_PROMPT, ENV, LLM_CONFIG } from './tokens'
       inject: [ENV],
       useFactory: (env: Env): string => loadBasePrompt(resolvePromptsDir(env.PROMPTS_DIR)),
     },
+    {
+      provide: EXPAND_PROMPT,
+      inject: [ENV],
+      useFactory: (env: Env): string => loadExpandPrompt(resolvePromptsDir(env.PROMPTS_DIR)),
+    },
   ],
-  exports: [ENV, APP_CONFIG, AUTH_CONFIG, LLM_CONFIG, BASE_PROMPT],
+  exports: [ENV, APP_CONFIG, AUTH_CONFIG, LLM_CONFIG, BASE_PROMPT, EXPAND_PROMPT],
 })
 export class ConfigModule {}

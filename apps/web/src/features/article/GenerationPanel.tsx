@@ -33,7 +33,7 @@ interface GenerationPanelProps {
   readonly onChanged: (article: ArticleDetail) => void;
 }
 
-const STAGE_ORDER: readonly GenerationStage[] = ['prompt', 'generate', 'parse', 'checks'];
+const STAGE_ORDER: readonly GenerationStage[] = ['prompt', 'generate', 'parse', 'expand', 'checks'];
 
 const RUN_STATUS_LABELS: Record<string, string> = {
   running: 'Идёт',

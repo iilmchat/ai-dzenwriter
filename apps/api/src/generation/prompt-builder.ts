@@ -47,6 +47,15 @@ export interface BuiltPrompt {
 // Подстановки одним проходом: так значения, содержащие {{...}}, не разворачиваются дважды.
 const PLACEHOLDER = /\{\{(\w+)\}\}/g;
 
+// Набивка шаблона значениями. Неизвестную подстановку оставляем как есть:
+// видно, что шаблон разошёлся с кодом.
+export function renderTemplate(template: string, values: Record<string, string>): string {
+  return template.replace(PLACEHOLDER, (match, key: string) => {
+    const value = values[key];
+    return value === undefined ? match : value;
+  });
+}
+
 export function buildPrompt(input: BuildPromptInput): BuiltPrompt {
   const values: Record<string, string> = {
     style_id: input.style.id,
@@ -66,17 +75,44 @@ export function buildPrompt(input: BuildPromptInput): BuiltPrompt {
     disclaimer_text: input.style.disclaimer.text,
   };
 
-  const text = input.basePrompt.replace(PLACEHOLDER, (match, key: string) => {
-    const value = values[key];
-    // Неизвестную подстановку оставляем как есть: видно, что шаблон разошёлся с кодом.
-    return value === undefined ? match : value;
-  });
+  const text = renderTemplate(input.basePrompt, values);
 
   return {
     text,
     promptVersion: promptVersion(input),
     sha256: sha256(text),
   };
+}
+
+export interface BuildExpandPromptInput {
+  // Промпт доведения объёма из prompts/dzen_expand.md.
+  readonly expandPrompt: string;
+  readonly format: FormatConfig;
+  readonly topic: string;
+  readonly title: string;
+  // Текст первой версии, который нужно разворачивать.
+  readonly markdown: string;
+  readonly facts: readonly PromptFact[];
+}
+
+// Промпт второго прохода. Цель — нижняя граница формата плюс 20%,
+// округлённая до сотен: чтобы модель перепрыгнула границу, а не остановилась на ней.
+export function buildExpandPrompt(input: BuildExpandPromptInput): string {
+  const minChars = input.format.length.min;
+  const targetChars = Math.round((minChars * 1.2) / 100) * 100;
+  const values: Record<string, string> = {
+    format_name: input.format.name,
+    format_structure: input.format.structure,
+    topic: input.topic,
+    title: input.title,
+    current_chars: String(input.markdown.length),
+    min_chars: String(minChars),
+    target_chars: String(targetChars),
+    length_max: String(input.format.length.max),
+    facts: renderFacts(input.facts),
+    article_markdown: input.markdown,
+  };
+  return renderTemplate(input.expandPrompt, values);
 }
 
 // Факты идут как данные с метками: модель ссылается на них в claims по этим меткам.

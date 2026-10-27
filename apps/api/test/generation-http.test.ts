@@ -204,7 +204,7 @@ describe('генерация по HTTP', () => {
     const stages = events.filter((event) => event.event === 'stage');
     expect([
       ...new Set(stages.map((event) => (event.data.stage as { stage: string }).stage)),
-    ]).toEqual(['prompt', 'generate', 'parse', 'checks']);
+    ]).toEqual(['prompt', 'generate', 'parse', 'expand', 'checks']);
     const result = events.at(-1);
     expect(result?.event).toBe('result');
     expect((result?.data.result as { status: string }).status).toBe('succeeded');
@@ -217,6 +217,9 @@ describe('генерация по HTTP', () => {
     const first = await call('POST', `/articles/${articleId}/generations`, 'author', {
       'Idempotency-Key': 'key-http-1',
     });
+    const afterFirst = provider.requests.length - before;
+    expect(afterFirst).toBeGreaterThan(0);
+
     const second = await call('POST', `/articles/${articleId}/generations`, 'author', {
       'Idempotency-Key': 'key-http-1',
     });
@@ -224,7 +227,8 @@ describe('генерация по HTTP', () => {
     const firstRun = parseSse(first.body).at(-1)?.data.result as { runId: string };
     const secondRun = parseSse(second.body).at(-1)?.data.result as { runId: string };
     expect(secondRun.runId).toBe(firstRun.runId);
-    expect(provider.requests.length - before).toBe(1);
+    // Повтор не вызывает провайдера: число запросов не выросло.
+    expect(provider.requests.length - before).toBe(afterFirst);
   });
 
   it('история запусков отдаётся списком', async () => {

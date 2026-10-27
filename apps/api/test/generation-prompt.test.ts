@@ -1,10 +1,16 @@
 import { describe, expect, it } from 'vitest';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
-import { loadBasePrompt, resolvePromptsDir } from '../src/config/prompt-config';
-import { buildPrompt, renderFacts } from '../src/generation/prompt-builder';
+import { loadBasePrompt, loadExpandPrompt, resolvePromptsDir } from '../src/config/prompt-config';
+import {
+  buildExpandPrompt,
+  buildPrompt,
+  renderFacts,
+  renderTemplate,
+} from '../src/generation/prompt-builder';
 
 const config = loadAppConfig(resolveConfigDir());
 const basePrompt = loadBasePrompt(resolvePromptsDir());
+const expandPrompt = loadExpandPrompt(resolvePromptsDir());
 
 describe('сборка промпта', () => {
   it('подставляет все поля шаблона', () => {
@@ -181,5 +187,44 @@ describe('сборка промпта', () => {
     });
 
     expect(built.text).toBe('Значение: {{unknown_value}}');
+  });
+
+  it('renderTemplate набивает шаблон значениями одним проходом', () => {
+    expect(renderTemplate('A {{x}} B {{x}} C {{y}}', { x: '1', y: '2' })).toBe('A 1 B 1 C 2');
+    expect(renderTemplate('Значение {{x}} {{y}}', { x: '{{y}}' })).toBe('Значение {{y}} {{y}}');
+  });
+});
+
+describe('промпт доведения объёма', () => {
+  it('подставляет текущую версию, каркас формата и целевой объём', () => {
+    const format = config.formats.formats.news;
+
+    const built = buildExpandPrompt({
+      expandPrompt,
+      format,
+      topic: 'Регулирование ИИ в ЕС',
+      title: 'Тема про ИИ',
+      markdown: 'Короткая версия без объёма.',
+      facts: [
+        {
+          factId: '11111111-1111-4111-8111-111111111111',
+          label: 'F1',
+          type: 'news_source',
+          text: 'Регулирование ИИ в ЕС принято в октябре 2026 года.',
+          sourceName: 'Reuters',
+          sourceUrl: 'https://example.com/eu-ai-act',
+          sourcePublishedAt: '2026-10-20',
+        },
+      ],
+    });
+
+    expect(built).not.toMatch(/\{\{\w+\}\}/);
+    expect(built).toContain('Короткая версия без объёма.');
+    expect(built).toContain('Целевой объём: от 4800');
+    expect(built).toContain('F1 [источник новости]');
+  });
+
+  it('полный текст промпта доведения стабилен', () => {
+    expect(expandPrompt.trim()).toMatchSnapshot();
   });
 });

@@ -12,7 +12,7 @@ import { ArticlesService } from '../src/articles/articles.service';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
 import { ChecksService } from '../src/checks/checks.service';
 import type { LlmConfig } from '../src/config/llm-config';
-import { loadBasePrompt, resolvePromptsDir } from '../src/config/prompt-config';
+import { loadBasePrompt, loadExpandPrompt, resolvePromptsDir } from '../src/config/prompt-config';
 import { GenerationService, type GenerationEvent } from '../src/generation/generation.service';
 import { MockLlmProvider } from '../src/generation/mock-provider';
 import { InMemoryArticlesRepository } from './support/in-memory-articles.repository';
@@ -22,6 +22,7 @@ import { InMemoryGenerationRepository } from './support/in-memory-generation.rep
 
 const config = loadAppConfig(resolveConfigDir(path.resolve(process.cwd(), '../../config')));
 const basePrompt = loadBasePrompt(resolvePromptsDir());
+const expandPrompt = loadExpandPrompt(resolvePromptsDir());
 
 const LLM: LlmConfig = {
   provider: 'mock',
@@ -53,6 +54,7 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
     config,
     llm,
     basePrompt,
+    expandPrompt,
   );
 
   const addPerson = (login: string) => {
@@ -109,6 +111,38 @@ async function collect(
     events.push(event);
   });
   return { events, result };
+}
+
+// Полный корректный ответ модели по схеме с заданным текстом статьи.
+function okJson(markdown: string, claimStatements: readonly string[] = []): string {
+  return JSON.stringify({
+    status: 'ok',
+    title: 'Тема про ИИ',
+    article_markdown: markdown,
+    seo_title: 'Тема про ИИ',
+    tags: ['ии'],
+    description: 'Описание материала.',
+    image_prompt: 'Спокойная иллюстрация.',
+    claims: claimStatements.map((text) => ({ text, type: 'fact', fact_ids: ['F1'] })),
+    questions: [],
+    advertising_label_suggested: false,
+    disclaimer_needed: false,
+  });
+}
+
+// Новость нижняя граница 4000: 39 знаков × 120 = 4680 — внутри диапазона формата.
+const LONG_MARKDOWN = 'Развернутый абзац с фактами из списка. '.repeat(120);
+
+type StageEvent = Extract<GenerationEvent, { readonly type: 'stage' }>;
+
+function stageEvents(events: readonly GenerationEvent[]): StageEvent[] {
+  return events.filter((event): event is StageEvent => event.type === 'stage');
+}
+
+function expandStages(events: readonly GenerationEvent[]): string[] {
+  return stageEvents(events)
+    .filter((event) => event.stage.stage === 'expand')
+    .map((event) => event.stage.status);
 }
 
 describe('запуск генерации', () => {
@@ -215,6 +249,7 @@ describe('запуск генерации', () => {
       'prompt',
       'generate',
       'parse',
+      'expand',
       'checks',
     ]);
     expect(harness.runs.audit.at(-1)).toMatchObject({ action: 'generation.succeeded' });
@@ -262,7 +297,8 @@ describe('запуск генерации', () => {
     const plan = await harness.service.prepare(harness.actors.owner, article.id, undefined);
     const { result } = await collect(harness.service, plan);
 
-    expect(provider.requests).toHaveLength(2);
+    // Повтор схемы и попытка доведения объёма: запросов три.
+    expect(provider.requests).toHaveLength(3);
     expect(provider.requests[1]?.messages.at(-1)?.content).toContain(
       'Предыдущий ответ не прошёл проверку',
     );
@@ -345,11 +381,15 @@ describe('запуск генерации', () => {
 
     const first = await harness.service.prepare(harness.actors.owner, article.id, 'key-1');
     await collect(harness.service, first);
+    const afterFirst = harness.provider.requests.length;
+    expect(afterFirst).toBeGreaterThan(0);
+
     const second = await harness.service.prepare(harness.actors.owner, article.id, 'key-1');
 
     expect(second.kind).toBe('replay');
     expect(harness.runs.runs.size).toBe(1);
-    expect(harness.provider.requests).toHaveLength(1);
+    // Повтор не вызывает провайдера: число запросов не выросло.
+    expect(harness.provider.requests).toHaveLength(afterFirst);
   });
 
   it('тот же ключ для другого материала отклоняется', async () => {
@@ -362,6 +402,114 @@ describe('запуск генерации', () => {
     await expect(
       harness.service.prepare(harness.actors.owner, other.id, 'key-2'),
     ).rejects.toBeInstanceOf(ConflictException);
+  });
+});
+
+describe('доведение объёма', () => {
+  it('модель сдала короче нижней границы — второй проход разворачивает фактами', async () => {
+    const provider = new MockLlmProvider({
+      steps: [
+        { kind: 'content', content: okJson('Короткий текст без объёма.') },
+        { kind: 'content', content: okJson(LONG_MARKDOWN, ['Утверждение по факту F1']) },
+      ],
+    });
+    const harness = setup(provider);
+    const article = await createReadyArticle(harness);
+
+    const plan = await harness.service.prepare(harness.actors.owner, article.id, undefined);
+    const { events, result } = await collect(harness.service, plan);
+
+    expect(result.status).toBe('succeeded');
+    expect(provider.requests).toHaveLength(2);
+    // Второй запрос — отдельный промпт доведения: в нём первая версия и целевой объём.
+    const expandRequest = provider.requests[1]?.messages.at(-1)?.content ?? '';
+    expect(expandRequest).toContain('Короткий текст без объёма.');
+    expect(expandRequest).toContain('Целевой объём: от 4800');
+    expect(expandStages(events)).toEqual(['running', 'done']);
+    expect(harness.runs.versions[0]?.articleMarkdown).toBe(LONG_MARKDOWN);
+    // Usage суммируется за оба прохода: токены промпта доведения не теряются.
+    const done = stageEvents(events).find(
+      (event) => event.stage.stage === 'expand' && event.stage.status === 'done',
+    );
+    expect(done?.stage.tokens).toBe(result.outputTokens);
+    // Новые утверждения из второй версии попадают в версию.
+    expect(harness.runs.versions[0]?.claims).toHaveLength(1);
+  });
+
+  it('две ошибки схемы в доведении — остаётся первая версия, запуск успешен', async () => {
+    const provider = new MockLlmProvider({
+      steps: [
+        { kind: 'content', content: okJson('Короткий текст без объёма.') },
+        { kind: 'content', content: 'не json' },
+        { kind: 'content', content: 'тоже не json' },
+      ],
+    });
+    const harness = setup(provider);
+    const article = await createReadyArticle(harness);
+
+    const plan = await harness.service.prepare(harness.actors.owner, article.id, undefined);
+    const { events, result } = await collect(harness.service, plan);
+
+    expect(result.status).toBe('succeeded');
+    expect(result.versionNumber).toBe(1);
+    expect(provider.requests).toHaveLength(3);
+    expect(expandStages(events)).toEqual(['running', 'failed']);
+    expect(harness.runs.versions[0]?.articleMarkdown).toBe('Короткий текст без объёма.');
+  });
+
+  it('расширение не дало объёма — остаётся первая версия', async () => {
+    const provider = new MockLlmProvider({
+      steps: [
+        { kind: 'content', content: okJson('Краткий текст без объёма.') },
+        { kind: 'content', content: okJson('Краткий текст без объёма.') },
+      ],
+    });
+    const harness = setup(provider);
+    const article = await createReadyArticle(harness);
+
+    const plan = await harness.service.prepare(harness.actors.owner, article.id, undefined);
+    const { events, result } = await collect(harness.service, plan);
+
+    expect(result.status).toBe('succeeded');
+    expect(provider.requests).toHaveLength(2);
+    expect(expandStages(events)).toEqual(['running', 'failed']);
+    expect(harness.runs.versions[0]?.articleMarkdown).toBe('Краткий текст без объёма.');
+  });
+
+  it('объём уже в диапазоне — доведение пропускается без второго вызова', async () => {
+    const provider = new MockLlmProvider({
+      steps: [{ kind: 'content', content: okJson(LONG_MARKDOWN) }],
+    });
+    const harness = setup(provider);
+    const article = await createReadyArticle(harness);
+
+    const plan = await harness.service.prepare(harness.actors.owner, article.id, undefined);
+    const { events, result } = await collect(harness.service, plan);
+
+    expect(result.status).toBe('succeeded');
+    expect(provider.requests).toHaveLength(1);
+    expect(expandStages(events)).toEqual(['skipped']);
+    expect(harness.runs.versions[0]?.articleMarkdown).toBe(LONG_MARKDOWN);
+  });
+
+  it('отмена в доведении объёма закрывает запуск как отменённый', async () => {
+    const provider = new MockLlmProvider({
+      steps: [
+        { kind: 'content', content: okJson('Короткий текст без объёма.') },
+        { kind: 'error', code: 'aborted' },
+      ],
+    });
+    const harness = setup(provider);
+    const article = await createReadyArticle(harness);
+
+    const plan = await harness.service.prepare(harness.actors.owner, article.id, undefined);
+    const { events, result } = await collect(harness.service, plan);
+
+    expect(result.status).toBe('cancelled');
+    expect(provider.requests).toHaveLength(2);
+    expect(expandStages(events)).toEqual(['running']);
+    expect(harness.runs.statusOf(result.runId)).toBe('cancelled');
+    expect(harness.runs.versions).toHaveLength(0);
   });
 });
 

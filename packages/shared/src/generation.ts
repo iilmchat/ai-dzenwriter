@@ -66,13 +66,16 @@ export const claimSchema = z.object({
 export type Claim = z.infer<typeof claimSchema>;
 
 // Стадии генерации в SSE. Клиент показывает их как есть: порядок не меняется.
-export const GENERATION_STAGES = ['prompt', 'generate', 'parse', 'checks'] as const;
+// expand — доведение объёма вторым проходом: срабатывает, только когда модель сдала
+// текст короче нижней границы формата.
+export const GENERATION_STAGES = ['prompt', 'generate', 'parse', 'expand', 'checks'] as const;
 export type GenerationStage = (typeof GENERATION_STAGES)[number];
 
 export const GENERATION_STAGE_LABELS: Record<GenerationStage, string> = {
   prompt: 'Сборка промпта',
   generate: 'Генерация',
   parse: 'Разбор ответа',
+  expand: 'Доведение объёма',
   checks: 'Проверки',
 };
 
