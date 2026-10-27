@@ -79,6 +79,8 @@ async function main(): Promise<void> {
       factId = createdFact.id;
     } else {
       // Повторный прогон не должен зависеть от того, что факт успели отклонить вручную.
+      // updatedAt поднимаем заново: список библиотеки отдаёт свежие 500 записей,
+      // и без этого старый факт выпадает из списка, когда в базе накопилось больше.
       await db
         .update(facts)
         .set({
@@ -89,6 +91,7 @@ async function main(): Promise<void> {
           createdBy: author.id,
           approvedBy: reviewer.id,
           approvedAt: new Date(),
+          updatedAt: new Date(),
         })
         .where(eq(facts.id, factId));
     }
