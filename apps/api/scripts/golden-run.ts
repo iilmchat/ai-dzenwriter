@@ -320,9 +320,10 @@ function parseBriefFilter(argv: readonly string[]): readonly string[] | undefine
   if (arg === undefined) {
     return undefined;
   }
+  // pnpm на Windows может превратить запятые в пробелы, поэтому делим на любой разделитель.
   const ids = arg
     .slice(prefix.length)
-    .split(',')
+    .split(/[,\s]+/)
     .map((id) => id.trim())
     .filter((id) => id.length > 0);
   if (ids.length === 0) {
