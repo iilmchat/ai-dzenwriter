@@ -97,6 +97,9 @@ export interface BuildExpandPromptInput {
 
 // Промпт второго прохода. Цель — нижняя граница формата плюс 20%,
 // округлённая до сотен: чтобы модель перепрыгнула границу, а не остановилась на ней.
+// 28.10.2026, решение владельца: вариант +35% проверен прогоном №9 — среднего не дал
+// (3276 против 3246 при +20%), максимум всё равно упирается в потолок mini (~4000),
+// зато добавил воды (superlatives 8 → 10, claims без привязок 4, чистых 0/20). Вернулись к +20%.
 export function buildExpandPrompt(input: BuildExpandPromptInput): string {
   const minChars = input.format.length.min;
   const targetChars = Math.round((minChars * 1.2) / 100) * 100;
