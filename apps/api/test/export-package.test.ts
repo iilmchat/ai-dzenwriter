@@ -67,6 +67,25 @@ describe('публичный текст для Дзена', () => {
       ].join('\n'),
     );
   });
+
+  it('оговорка текста версии видна в article.md и в метаданных', () => {
+    const disclaimer =
+      'Это личный опыт конкретного человека. Результаты у других могут отличаться.';
+    const files = buildExportFiles({
+      ...ARTICLE,
+      version: {
+        ...VERSION,
+        articleMarkdown: `Вступление.\n\nОсновная часть.\n\n${disclaimer}`,
+        disclaimerText: disclaimer,
+      },
+    });
+
+    const articleMd = files.find((file) => file.name === 'article.md')?.content ?? '';
+    expect(articleMd).toContain(disclaimer);
+    // Метаданные несут оговорку отдельно: редактор Дзена заполняет её вне текста.
+    const metadata = JSON.parse(files.find((file) => file.name === 'metadata.json')?.content ?? '');
+    expect(metadata.disclaimer).toBe(disclaimer);
+  });
 });
 
 describe('метаданные пакета', () => {

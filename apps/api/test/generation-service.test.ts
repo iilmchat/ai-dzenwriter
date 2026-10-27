@@ -513,6 +513,42 @@ describe('доведение объёма', () => {
   });
 });
 
+describe('оговорка ставится кодом', () => {
+  it('чувствительная тема: оговорка дописана в версию, блокирующего чека нет', async () => {
+    const harness = setup();
+    const style = config.styles.get('industry-news');
+    const disclaimer = style?.disclaimer.text ?? '';
+    const article = await createReadyArticle(harness, 'Как ИИ помогает лечить пациентов', [
+      'здоровье',
+    ]);
+
+    const plan = await harness.service.prepare(harness.actors.owner, article.id, undefined);
+    await collect(harness.service, plan);
+
+    const version = harness.runs.versions[0];
+    // Оговорка появляется, хотя модель не сдала disclaimer_needed: ставит её код.
+    expect(version?.articleMarkdown.endsWith(disclaimer)).toBe(true);
+    expect(version?.articleMarkdown).toContain(`\n\n${disclaimer}`);
+    expect(version?.disclaimerText).toBe(disclaimer);
+    expect(version?.checks.filter((item) => item.id === 'disclaimer_required')).toEqual([]);
+  });
+
+  it('нейтральная тема: текст версии не трогается и поле пустое', async () => {
+    const provider = new MockLlmProvider({
+      steps: [{ kind: 'content', content: okJson(LONG_MARKDOWN) }],
+    });
+    const harness = setup(provider);
+    const article = await createReadyArticle(harness);
+
+    const plan = await harness.service.prepare(harness.actors.owner, article.id, undefined);
+    await collect(harness.service, plan);
+
+    const version = harness.runs.versions[0];
+    expect(version?.articleMarkdown).toBe(LONG_MARKDOWN);
+    expect(version?.disclaimerText).toBeNull();
+  });
+});
+
 describe('отмена запуска', () => {
   it('отменённый запуск закрывается как cancelled', async () => {
     const harness = setup();

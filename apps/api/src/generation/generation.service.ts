@@ -27,6 +27,7 @@ import { EDITABLE_CONTENT_STATUSES, isInAiFocus } from '../articles/article-rule
 import { CATALOG_REPOSITORY, type CatalogRepository } from '../catalog/catalog.repository';
 import type { CheckFact } from '../checks/check-context';
 import { ChecksService } from '../checks/checks.service';
+import { applyDisclaimer } from '../checks/disclaimer';
 import type { AppConfig } from '../config/app-config';
 import { describeIssues } from '../config/errors';
 import type { LlmConfig } from '../config/llm-config';
@@ -301,6 +302,21 @@ export class GenerationService {
       output = expanded.output;
       usage = expanded.usage;
 
+      // Оговорку ставит код, а не модель: точный текст берётся из стиля, модель
+      // только парафразит. Вставка до проверок: чек disclaimer_required и пакет
+      // видят текст версии в его финальном виде.
+      const applied = applyDisclaimer({
+        markdown: output.article_markdown,
+        style: plan.context.style,
+        topic: plan.context.article.topic,
+        keywords: plan.context.article.keywords,
+        config: this.config.checks,
+      });
+      output = { ...output, article_markdown: applied.markdown };
+      const disclaimerText =
+        applied.disclaimerText ??
+        (output.disclaimer_needed ? plan.context.style.disclaimer.text : null);
+
       // Проверки считаются до сохранения версии: блокирующие результаты
       // должны быть в версии, а не в ответе.
       await emit({ type: 'stage', stage: { stage: 'checks', status: 'running' } });
@@ -316,7 +332,7 @@ export class GenerationService {
         tags: output.tags,
         articleMarkdown: output.article_markdown,
         advertisingLabel: output.advertising_label_suggested,
-        disclaimerText: output.disclaimer_needed ? plan.context.style.disclaimer.text : null,
+        disclaimerText,
         claims: output.claims.map((claim) => ({
           text: claim.text,
           type: claim.type,
@@ -347,7 +363,7 @@ export class GenerationService {
         description: output.description,
         imagePrompt: output.image_prompt,
         advertisingLabel: output.advertising_label_suggested,
-        disclaimerText: output.disclaimer_needed ? plan.context.style.disclaimer.text : null,
+        disclaimerText,
         claims: checks.claims,
         checks: checks.checks,
         styleVersion: plan.context.style.version,

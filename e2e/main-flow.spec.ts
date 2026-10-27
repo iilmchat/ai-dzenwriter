@@ -19,7 +19,9 @@ test('материал проходит путь от создания до пу
     throw new Error('В Playwright не задан baseURL');
   }
 
-  const topic = `${E2E_TOPIC_PREFIX} ИИ-агенты ${Date.now()}`;
+  // Тема с медицинским словом: оговорку к чувствительной теме ставит код проверок,
+  // поэтому она видна в тексте версии и в пакете без участия модели.
+  const topic = `${E2E_TOPIC_PREFIX} ИИ-агенты в медицине ${Date.now()}`;
   const publicationUrl = 'https://dzen.ru/a/e2e-main-flow';
   const authorContext = await signedInContext(browser, baseURL, setup.authorToken);
 
@@ -100,6 +102,10 @@ test('материал проходит путь от создания до пу
       await expect(articleText).toBeVisible({ timeout: 10_000 });
       await expect(articleText.getByText(/Вступление: зачем эта тема важна/)).toBeVisible();
       await expect(articleText.getByText('Утверждение по факту F1')).toBeVisible();
+      // Оговорка чувствительной темы в тексте: её добавил код, а не модель.
+      await expect(
+        articleText.getByRole('paragraph').filter({ hasText: 'не является медицинской' }),
+      ).toBeVisible();
       await expect(reviewerPage.getByRole('link', { name: 'Редактировать текст' })).toHaveCount(0);
 
       await reviewerPage.getByRole('radio', { name: 'Утверждено' }).check();

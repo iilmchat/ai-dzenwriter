@@ -33,6 +33,7 @@ import {
 import { CATALOG_REPOSITORY, type CatalogRepository } from '../catalog/catalog.repository';
 import type { CheckClaim } from '../checks/check-context';
 import { ChecksService } from '../checks/checks.service';
+import { applyDisclaimer } from '../checks/disclaimer';
 import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/tokens';
 import { FACTS_REPOSITORY, type FactsRepository } from '../facts/facts.repository';
@@ -671,23 +672,38 @@ export class ArticlesService {
     origin: VersionOrigin,
     fields: VersionFields,
   ): Promise<NewVersionRecord> {
-    const collected = await this.collectChecks(actor, article, fields);
+    // Оговорку ставит код, а не модель: точный текст берётся из стиля. Вставка
+    // до проверок: текст версии, поле disclaimerText и проверки согласованы;
+    // автор не может потерять оговорку правкой текста.
+    const style = this.requireStyle(article.styleId);
+    const applied = applyDisclaimer({
+      markdown: fields.articleMarkdown,
+      style,
+      topic: article.topic,
+      keywords: article.keywords,
+      config: this.config.checks,
+    });
+    const effective: VersionFields =
+      applied.disclaimerText === null
+        ? fields
+        : { ...fields, articleMarkdown: applied.markdown, disclaimerText: applied.disclaimerText };
+    const collected = await this.collectChecks(actor, article, effective);
     return {
       articleId: article.id,
       origin,
-      title: fields.title,
-      articleMarkdown: fields.articleMarkdown,
-      seoTitle: fields.seoTitle,
-      tags: fields.tags,
-      description: fields.description,
-      imagePrompt: fields.imagePrompt,
-      advertisingLabel: fields.advertisingLabel,
-      disclaimerText: fields.disclaimerText,
+      title: effective.title,
+      articleMarkdown: effective.articleMarkdown,
+      seoTitle: effective.seoTitle,
+      tags: effective.tags,
+      description: effective.description,
+      imagePrompt: effective.imagePrompt,
+      advertisingLabel: effective.advertisingLabel,
+      disclaimerText: effective.disclaimerText,
       claims: collected.claims,
       checks: collected.checks,
-      styleVersion: fields.styleVersion,
-      promptVersion: fields.promptVersion,
-      generationRunId: fields.generationRunId,
+      styleVersion: effective.styleVersion,
+      promptVersion: effective.promptVersion,
+      generationRunId: effective.generationRunId,
       createdBy: actor.id,
     };
   }

@@ -1,5 +1,6 @@
 import type { VersionCheck } from '@dzenwriter/shared';
 import { check, type CheckContext } from './check-context';
+import { requiredDisclaimer } from './disclaimer';
 
 // Общие проверки для всех стилей: уровень задан правилами движка, стилем они не настраиваются.
 export function runCommonChecks(context: CheckContext): VersionCheck[] {
@@ -25,29 +26,28 @@ const PARAGRAPHS_PER_HOOK = 3;
 
 // Тема медицинская, юридическая или финансовая — нужен дисклеймер.
 function checkDisclaimer(context: CheckContext): VersionCheck[] {
-  const { style } = context.input;
-  const needsDisclaimer = style.disclaimer.always || disclaimerTopic(context) !== null;
-  if (!needsDisclaimer) {
+  const { input } = context;
+  const required = requiredDisclaimer({
+    style: input.style,
+    topic: input.topic,
+    keywords: input.keywords,
+    config: input.config,
+  });
+  if (required === null) {
     return [];
   }
-  const text = context.input.articleMarkdown.toLowerCase();
-  const disclaimer = style.disclaimer.text.trim().toLowerCase();
+  const text = input.articleMarkdown.toLowerCase();
+  const disclaimer = required.trim().toLowerCase();
   if (disclaimer.length > 0 && text.includes(disclaimer)) {
     return [];
   }
   return [
-    check('disclaimer_required', 'block', `В тексте нет оговорки: «${style.disclaimer.text}»`),
+    check(
+      'disclaimer_required',
+      'block',
+      `В тексте нет оговорки: «${input.style.disclaimer.text}»`,
+    ),
   ];
-}
-
-function disclaimerTopic(context: CheckContext): string | null {
-  const topic = [context.input.topic, ...context.input.keywords].join(' ').toLowerCase();
-  for (const [name, triggers] of Object.entries(context.input.config.disclaimer_triggers)) {
-    if (triggers.some((trigger) => topic.includes(trigger.toLowerCase()))) {
-      return name;
-    }
-  }
-  return null;
 }
 
 function checkTitleLength(context: CheckContext): VersionCheck[] {

@@ -61,8 +61,8 @@ async function createArticle(
 }
 
 describe('ручное сохранение версии и откат', () => {
-  async function articleWithFacts(harness: Harness) {
-    const article = await createArticle(harness);
+  async function articleWithFacts(harness: Harness, overrides: Partial<CreateArticleInput> = {}) {
+    const article = await createArticle(harness, overrides);
     const fact = harness.facts.addFact({
       type: 'news_source',
       text: 'Европейский союз принял пакет правил по ИИ.',
@@ -115,6 +115,28 @@ describe('ручное сохранение версии и откат', () => {
     // Числа 42 в фактах нет — это блокирующая проверка.
     expect(response.version.checks.map((item) => item.id)).toContain('numbers_must_map_to_facts');
     expect(harness.repo.audit.at(-1)).toMatchObject({ action: 'version.create' });
+  });
+
+  it('авторская правка не теряет оговорку чувствительной темы', async () => {
+    const harness = setup();
+    const style = config.styles.get('industry-news');
+    const disclaimer = style?.disclaimer.text ?? '';
+    const article = await articleWithFacts(harness, {
+      topic: 'Как клиники используют ИИ для пациентов',
+      keywords: ['здоровье'],
+    });
+
+    const response = await harness.service.saveVersion(
+      harness.actors.owner,
+      article.id,
+      { ...DRAFT, expectedVersion: article.version },
+      NOW,
+    );
+
+    // В черновике оговорки нет — код дописал её до проверок и сохранил поле.
+    expect(response.version.articleMarkdown.endsWith(disclaimer)).toBe(true);
+    expect(response.version.disclaimerText).toBe(disclaimer);
+    expect(response.version.checks.filter((item) => item.id === 'disclaimer_required')).toEqual([]);
   });
 
   it('устаревшая версия материала даёт 409', async () => {
