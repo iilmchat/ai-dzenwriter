@@ -297,8 +297,37 @@ export function knownNames(sources: readonly string[]): string {
     .toLowerCase();
 }
 
-export function isKnownName(name: string, corpus: string): boolean {
-  return corpus.includes(name.toLowerCase());
+export function isKnownName(
+  name: string,
+  corpus: string,
+  corpusStems?: ReadonlySet<string>,
+): boolean {
+  if (corpus.includes(name.toLowerCase())) {
+    return true;
+  }
+  if (corpusStems === undefined) {
+    return false;
+  }
+  // Имя из двух и более слов допускает морфологию: «Банка России» и «Банком
+  // России» — это «Банк России» из факта. Каждая словоформа имени должна
+  // встречаться в корпусе той же основой. Однословные имена по основам не
+  // матчатся: иначе любое слово с заглавной совпало бы со случайным стемом.
+  const words = name.match(/[\p{L}\p{N}]+/gu) ?? [];
+  if (words.length < 2) {
+    return false;
+  }
+  return words.every((word) => corpusStems.has(stemOf(word)));
+}
+
+// Основы слов корпуса для морфологии имён: складывается из того же
+// стемминга, что и текст статьи, поэтому формы сверяются симметрично.
+export function corpusNameStems(corpus: string): ReadonlySet<string> {
+  const tokens = corpus.match(/[\p{L}\p{N}]+/gu) ?? [];
+  const stems = new Set<string>();
+  for (const token of tokens) {
+    stems.add(stemOf(token));
+  }
+  return stems;
 }
 
 function tokenize(text: string): Word[] {

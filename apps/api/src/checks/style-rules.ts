@@ -91,7 +91,7 @@ function checkNumbers(context: CheckContext, severity: VersionCheck['severity'])
 function checkNames(context: CheckContext, severity: VersionCheck['severity']): VersionCheck[] {
   const results: VersionCheck[] = [];
   for (const name of context.names) {
-    if (isKnownName(name.text, context.nameCorpus)) {
+    if (isKnownName(name.text, context.nameCorpus, context.nameStems)) {
       continue;
     }
     results.push(

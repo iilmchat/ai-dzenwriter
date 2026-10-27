@@ -144,6 +144,60 @@ describe('проверка имён', () => {
     expect(result.checks.filter((item) => item.id === 'names_must_map_to_facts')).toEqual([]);
   });
 
+  it('падежная форма имени из факта проходит по основам', () => {
+    const fact: CheckFact = {
+      ...NEWS_FACT,
+      text: 'Банк России уточнил правила ответственности платформ за ИИ-рекомендации инвесторам.',
+    };
+    const result = runChecks(
+      input({
+        style: styleWith({ names_must_map_to_facts: 'block' }),
+        facts: [fact],
+        articleMarkdown:
+          'Новые правила представил Банк России.\n\nРазъяснение подготовлено Банком России, а комментарии запросит Банка России.',
+      }),
+    );
+
+    expect(result.checks.filter((item) => item.id === 'names_must_map_to_facts')).toEqual([]);
+  });
+
+  it('однословная форма по основам не спасает', () => {
+    const fact: CheckFact = {
+      ...NEWS_FACT,
+      text: 'Доля российских компаний с ИИ-ассистентами в рабочих процессах выросла вдвое.',
+    };
+    const result = runChecks(
+      input({
+        style: styleWith({ names_must_map_to_facts: 'block' }),
+        facts: [fact],
+        articleMarkdown: 'Отчёт о цифровизации опубликован в России.',
+      }),
+    );
+
+    const names = result.checks.filter((item) => item.id === 'names_must_map_to_facts');
+    expect(names.length).toBeGreaterThan(0);
+    expect(names[0]?.message).toContain('России');
+  });
+
+  it('имя, основы которого нет в корпусе, блокирует', () => {
+    const fact: CheckFact = {
+      ...NEWS_FACT,
+      text: 'Регуляторы ЕС утвердили требования к маркировке ИИ-контента в октябре 2026 года.',
+    };
+    const result = runChecks(
+      input({
+        style: styleWith({ names_must_map_to_facts: 'block' }),
+        topic: 'Маркировка ИИ-контента в новостях',
+        facts: [fact],
+        articleMarkdown: 'Требования к маркировке утвердил Европейский Союз по итогам работы.',
+      }),
+    );
+
+    const names = result.checks.filter((item) => item.id === 'names_must_map_to_facts');
+    expect(names.length).toBeGreaterThan(0);
+    expect(names[0]?.message).toContain('Европейский Союз');
+  });
+
   it('обычное слово с большой буквы именем не считается', () => {
     const result = runChecks(
       input({

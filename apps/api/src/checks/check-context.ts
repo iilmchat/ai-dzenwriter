@@ -8,6 +8,7 @@ import type {
   VersionCheck,
 } from '@dzenwriter/shared';
 import {
+  corpusNameStems,
   detectNames,
   extractNumbers,
   knownNames,
@@ -75,6 +76,8 @@ export interface CheckContext {
   readonly factNumberForms: ReadonlySet<string>;
   // Текст, по которому ищутся имена: факты, тема, ключевые слова, продукт.
   readonly nameCorpus: string;
+  // Основы слов того же корпуса: морфология имён сверяется по ним.
+  readonly nameStems: ReadonlySet<string>;
   // То же, но без фактов: для личного опыта имена в фактах не считаются разрешением.
   readonly topicCorpus: string;
   readonly factLabels: ReadonlySet<string>;
@@ -93,6 +96,7 @@ export function buildContext(input: CheckInput): CheckContext {
   const factSources = facts.map((fact) => fact.text);
   const topicSources = [input.topic, ...input.keywords];
   const productSources = input.productName === null ? [] : [input.productName];
+  const nameCorpus = knownNames([...factSources, ...topicSources, ...productSources]);
 
   const factNumberForms = new Set<string>();
   for (const source of [...factSources, ...topicSources, ...productSources]) {
@@ -119,7 +123,8 @@ export function buildContext(input: CheckInput): CheckContext {
     facts,
     linkedFacts: input.facts,
     factNumberForms,
-    nameCorpus: knownNames([...factSources, ...topicSources, ...productSources]),
+    nameCorpus,
+    nameStems: corpusNameStems(nameCorpus),
     topicCorpus: knownNames([...topicSources, ...productSources]),
     factLabels: new Set(input.factLabels),
     textLength: input.articleMarkdown.trim().length,
