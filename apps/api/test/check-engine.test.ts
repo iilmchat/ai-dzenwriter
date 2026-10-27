@@ -166,6 +166,44 @@ describe('проверка имён', () => {
     expect(result.checks.filter((item) => item.id === 'names_must_map_to_facts')).toEqual([]);
     expect(result.checks.filter((item) => item.id === 'numbers_must_map_to_facts')).toEqual([]);
   });
+
+  it('первое слово после точки в конце предложения именем не считается', () => {
+    // Баг прогона №2: точка обрезалась из слова, «между» перестало видеть её,
+    // и обычные слова после точки («Таким», «Основное») ловились как имена.
+    const result = runChecks(
+      input({
+        style: styleWith({ names_must_map_to_facts: 'block' }),
+        articleMarkdown: 'Мы утвердили план. Таким образом, работа пошла быстрее.',
+      }),
+    );
+
+    expect(result.checks.filter((item) => item.id === 'names_must_map_to_facts')).toEqual([]);
+  });
+
+  it('соседние слова-кандидаты не сливаются через границу предложения', () => {
+    // Баг прогона №2: «ИИ» склеивалось со следующим предложением («ИИ⏎⏎Несмотря»),
+    // начало предложения было не границей имени.
+    const result = runChecks(
+      input({
+        style: styleWith({ names_must_map_to_facts: 'block' }),
+        articleMarkdown: 'Мы доверяем ИИ.\n\nНесмотря на это, качество текста выросло.',
+      }),
+    );
+
+    expect(result.checks.filter((item) => item.id === 'names_must_map_to_facts')).toEqual([]);
+  });
+
+  it('дефисные продолжения аббревиатуры именем не считаются', () => {
+    // «ИИ-ассистентом» раньше матчится целиком: дефис не был границей токена.
+    const result = runChecks(
+      input({
+        style: styleWith({ names_must_map_to_facts: 'block' }),
+        articleMarkdown: 'Работа с ИИ-ассистентом стала нормой в редакции.',
+      }),
+    );
+
+    expect(result.checks.filter((item) => item.id === 'names_must_map_to_facts')).toEqual([]);
+  });
 });
 
 describe('проверка утверждений', () => {

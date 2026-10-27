@@ -252,7 +252,13 @@ export function detectNames(text: string, config: ChecksConfig): NameHit[] {
     let last = index;
     while (last + 1 < words.length) {
       const next = words[last + 1];
-      if (!next || !isCapitalized(next.text) || stop.has(next.text.toLowerCase())) {
+      // Начало предложения/абзаца — граница: продолжение имени это не всегда одно имя между строк.
+      if (
+        !next ||
+        !isCapitalized(next.text) ||
+        next.sentenceStart ||
+        stop.has(next.text.toLowerCase())
+      ) {
         break;
       }
       end = next.end;
@@ -297,7 +303,9 @@ export function isKnownName(name: string, corpus: string): boolean {
 
 function tokenize(text: string): Word[] {
   const words: Word[] = [];
-  const pattern = /[\p{L}\p{N}][\p{L}\p{N}'’.-]*/gu;
+  // Дефис — граница токена: «ИИ-ассистентом» распадается на «ИИ» и «ассистентом»,
+  // иначе аббревиатура уносит за собой продолжение и матчится как имя целиком.
+  const pattern = /[\p{L}\p{N}][\p{L}\p{N}'’.]*/gu;
   let previousEnd = -1;
   for (const match of text.matchAll(pattern)) {
     const start = match.index ?? 0;
@@ -311,7 +319,9 @@ function tokenize(text: string): Word[] {
       continue;
     }
     const end = start + raw.length;
-    const between = text.slice(previousEnd + 1, start);
+    // Хвостовая пунктуация считается признаком предложения: она принадлежит
+    // предыдущему матчу, но не стала частью слова (raw обрезан по точке).
+    const between = text.slice(Math.max(0, previousEnd), start);
     const sentenceStart = previousEnd < 0 || /[.!?…:;\n]/.test(between);
     words.push({ text: raw, start, end, sentenceStart });
     previousEnd = end;
