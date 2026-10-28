@@ -23,7 +23,8 @@ type ColumnKey = keyof typeof METRIC_CSV_COLUMNS;
 
 // Разбор CSV метрик: первая непустая строка — заголовок, имена колонок распознаются
 // по каноническим названиям и русским синонимам. Плохие строки пропускаются с причиной.
-export function parseMetricsCsv(csv: string): ParsedMetricsCsv {
+// today — дата в Москве: снимок из будущего не принимается, такие строки пропускаются.
+export function parseMetricsCsv(csv: string, today: string): ParsedMetricsCsv {
   const lines = csv.split(/\r?\n/);
   const headerIndex = lines.findIndex((line) => line.trim().length > 0);
   if (headerIndex < 0) {
@@ -66,6 +67,10 @@ export function parseMetricsCsv(csv: string): ParsedMetricsCsv {
     const capturedOn = (cells[columns.capturedOn as number] ?? '').trim();
     if (!/^\d{4}-\d{2}-\d{2}$/.test(capturedOn)) {
       skipped.push({ line: number, reason: `Некорректная дата: ${capturedOn}` });
+      continue;
+    }
+    if (capturedOn > today) {
+      skipped.push({ line: number, reason: `Дата снимка в будущем: ${capturedOn}` });
       continue;
     }
     const views = toInteger(cells[columns.views as number]);

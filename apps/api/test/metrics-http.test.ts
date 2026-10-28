@@ -145,6 +145,11 @@ describe('метрики по HTTP', () => {
     return { status: response.status, body: text.length > 0 ? JSON.parse(text) : {} };
   }
 
+  // Дата снимка в формате YYYY-MM-DD: -3 — через три дня (будущее), 7 — неделю назад.
+  function daysAgo(days: number): string {
+    return new Date(Date.now() - days * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+  }
+
   it('автор вносит метрики вручную', async () => {
     const response = await call('POST', '/metrics', 'author', {
       articleId,
@@ -193,13 +198,47 @@ describe('метрики по HTTP', () => {
     const response = await call('POST', '/metrics/import', 'author', {
       csv: [
         'url,captured_on,views,reads',
-        'https://dzen.ru/a/demo,2026-11-03,1500,450',
-        'https://dzen.ru/a/none,2026-11-03,10,2',
+        `https://dzen.ru/a/demo,${daysAgo(7)},1500,450`,
+        `https://dzen.ru/a/none,${daysAgo(7)},10,2`,
       ].join('\n'),
     });
 
     expect(response.status).toBe(200);
-    expect(response.body).toMatchObject({ imported: 1, updated: 0 });
+    expect(response.body).toMatchObject({ imported: 1, updated: 0, warnings: [] });
+  });
+
+  it('строка с датой в будущем пропускается с причиной', async () => {
+    const response = await call('POST', '/metrics/import', 'author', {
+      csv: ['url,captured_on,views,reads', `https://dzen.ru/a/demo,${daysAgo(-3)},10,2`].join('\n'),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ imported: 0, updated: 0 });
+    const skipped = response.body.skipped as { line: number; reason: string }[];
+    expect(skipped).toEqual([{ line: 2, reason: `Дата снимка в будущем: ${daysAgo(-3)}` }]);
+  });
+
+  it('отрицательный прирост в импорте помечается номером строки', async () => {
+    // База для сравнения: снимок с большими значениями на прошлую дату.
+    await call('POST', '/metrics/import', 'author', {
+      csv: ['url,captured_on,views,reads', `https://dzen.ru/a/demo,${daysAgo(7)},1500,450`].join(
+        '\n',
+      ),
+    });
+
+    const response = await call('POST', '/metrics/import', 'author', {
+      csv: ['url,captured_on,views,reads', `https://dzen.ru/a/demo,${daysAgo(5)},1000,400`].join(
+        '\n',
+      ),
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({ imported: 1 });
+    const warnings = response.body.warnings as { line: number; reason: string }[];
+    expect(warnings).toHaveLength(2);
+    expect(warnings[0]).toMatchObject({ line: 2 });
+    expect(warnings[0]?.reason).toContain('Просмотры меньше прошлого снимка');
+    expect(warnings[1]?.reason).toContain('Прочтения меньше прошлого снимка');
   });
 
   it('некорректная дата отклоняется', async () => {

@@ -203,19 +203,22 @@ function ManualEntry({ publications, onSaved }: ManualEntryProps) {
   const [reads, setReads] = useState('0');
   const [avgReadSeconds, setAvgReadSeconds] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
+  const [warnings, setWarnings] = useState<string[]>([]);
   const [busy, setBusy] = useState(false);
 
   async function save() {
     setBusy(true);
     setError(undefined);
+    setWarnings([]);
     try {
-      await createMetric({
+      const response = await createMetric({
         articleId,
         capturedOn,
         views: Number(views),
         reads: Number(reads),
         avgReadSeconds: avgReadSeconds.trim().length === 0 ? null : Number(avgReadSeconds),
       });
+      setWarnings(response.warnings);
       onSaved();
     } catch (cause) {
       setError(errorMessage(cause));
@@ -295,6 +298,15 @@ function ManualEntry({ publications, onSaved }: ManualEntryProps) {
           </div>
         </div>
         {error !== undefined ? <Notice tone="error">{error}</Notice> : null}
+        {warnings.length > 0 ? (
+          <Notice>
+            <ul className="flex flex-col gap-1">
+              {warnings.map((warning) => (
+                <li key={warning}>{warning}</li>
+              ))}
+            </ul>
+          </Notice>
+        ) : null}
         <div>
           <button
             type="button"
@@ -315,17 +327,22 @@ function CsvImport({ onImported }: { readonly onImported: () => void }) {
   const [csv, setCsv] = useState('');
   const [error, setError] = useState<string | undefined>(undefined);
   const [result, setResult] = useState<string | undefined>(undefined);
+  const [warnings, setWarnings] = useState<{ readonly line: number; readonly reason: string }[]>(
+    [],
+  );
   const [busy, setBusy] = useState(false);
 
   async function run() {
     setBusy(true);
     setError(undefined);
     setResult(undefined);
+    setWarnings([]);
     try {
       const response = await importMetrics(csv);
       setResult(
         `Импортировано: ${response.imported}, обновлено: ${response.updated}, пропущено: ${response.skipped.length}`,
       );
+      setWarnings(response.warnings);
       setCsv('');
       onImported();
     } catch (cause) {
@@ -375,6 +392,17 @@ function CsvImport({ onImported }: { readonly onImported: () => void }) {
         </div>
         {error !== undefined ? <Notice tone="error">{error}</Notice> : null}
         {result !== undefined ? <Notice>{result}</Notice> : null}
+        {warnings.length > 0 ? (
+          <Notice>
+            <ul className="flex flex-col gap-1">
+              {warnings.map((warning) => (
+                <li key={`${warning.line}-${warning.reason}`}>
+                  Строка {warning.line}: {warning.reason}
+                </li>
+              ))}
+            </ul>
+          </Notice>
+        ) : null}
         <div>
           <button
             type="button"

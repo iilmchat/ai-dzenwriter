@@ -153,17 +153,20 @@ describe('импорт CSV метрик', () => {
     'https://dzen.ru/a/demo,2026-11-01,1200,340,95',
     'https://dzen.ru/a/unknown,2026-11-01,10,2,',
   ].join('\n');
+  // «Сегодня» в тестах фиксировано: даты файла 2026-11-01 заведомо не из будущего.
+  const TODAY = '2026-12-31';
 
   it('импортирует известные публикации и пропускает неизвестные', async () => {
     const harness = setup();
     await publishedArticle(harness);
 
-    const response = await harness.service.importCsv(harness.actors.owner, CSV);
+    const response = await harness.service.importCsv(harness.actors.owner, CSV, TODAY);
 
     expect(response.imported).toBe(1);
     expect(response.updated).toBe(0);
     expect(response.skipped).toHaveLength(1);
     expect(response.skipped[0]?.reason).toContain('Нет публикации');
+    expect(response.warnings).toEqual([]);
     expect(harness.metrics.snapshots[0]).toMatchObject({
       capturedOn: '2026-11-01',
       views: 1200,
@@ -175,8 +178,8 @@ describe('импорт CSV метрик', () => {
     const harness = setup();
     await publishedArticle(harness);
 
-    await harness.service.importCsv(harness.actors.owner, CSV);
-    const response = await harness.service.importCsv(harness.actors.owner, CSV);
+    await harness.service.importCsv(harness.actors.owner, CSV, TODAY);
+    const response = await harness.service.importCsv(harness.actors.owner, CSV, TODAY);
 
     expect(response.imported).toBe(0);
     expect(response.updated).toBe(1);
@@ -187,7 +190,7 @@ describe('импорт CSV метрик', () => {
     const harness = setup();
     await publishedArticle(harness);
 
-    const response = await harness.service.importCsv(harness.actors.stranger, CSV);
+    const response = await harness.service.importCsv(harness.actors.stranger, CSV, TODAY);
 
     expect(response.imported).toBe(0);
     expect(response.skipped[0]?.reason).toContain('Нет доступа');
@@ -196,10 +199,98 @@ describe('импорт CSV метрик', () => {
   it('пустой файл не считается ошибкой', async () => {
     const harness = setup();
 
-    const response = await harness.service.importCsv(harness.actors.owner, '');
+    const response = await harness.service.importCsv(harness.actors.owner, '', TODAY);
 
     expect(response.imported).toBe(0);
     expect(response.skipped).toHaveLength(1);
+    expect(response.warnings).toEqual([]);
+  });
+
+  it('снимок из будущего пропускается с причиной', async () => {
+    const harness = setup();
+    await publishedArticle(harness);
+    const csv = ['url,captured_on,views,reads', 'https://dzen.ru/a/demo,2027-01-10,10,2'].join(
+      '\n',
+    );
+
+    const response = await harness.service.importCsv(harness.actors.owner, csv, TODAY);
+
+    expect(response.imported).toBe(0);
+    expect(response.skipped).toEqual([{ line: 2, reason: 'Дата снимка в будущем: 2027-01-10' }]);
+    expect(harness.metrics.snapshots).toHaveLength(0);
+  });
+
+  it('отрицательный прирост в импорте помечается, строка сохраняется', async () => {
+    const harness = setup();
+    await publishedArticle(harness);
+    await harness.service.importCsv(
+      harness.actors.owner,
+      'url,captured_on,views,reads\nhttps://dzen.ru/a/demo,2026-11-01,1200,340',
+      TODAY,
+    );
+    const csv = ['url,captured_on,views,reads', 'https://dzen.ru/a/demo,2026-11-02,1000,300'].join(
+      '\n',
+    );
+
+    const response = await harness.service.importCsv(harness.actors.owner, csv, TODAY);
+
+    expect(response.imported).toBe(1);
+    expect(response.warnings).toEqual([
+      {
+        line: 2,
+        reason: 'Просмотры меньше прошлого снимка (2026-11-01): 1000 < 1200',
+      },
+      {
+        line: 2,
+        reason: 'Прочтения меньше прошлого снимка (2026-11-01): 300 < 340',
+      },
+    ]);
+    expect(harness.metrics.snapshots).toHaveLength(2);
+  });
+});
+
+describe('предупреждения ручного ввода', () => {
+  it('отрицательный прирост к прошлому снимку возвращается в ответе', async () => {
+    const harness = setup();
+    const articleId = await publishedArticle(harness);
+    await harness.service.create(harness.actors.owner, {
+      articleId,
+      capturedOn: '2026-11-01',
+      views: 1200,
+      reads: 340,
+    });
+
+    const response = await harness.service.create(harness.actors.owner, {
+      articleId,
+      capturedOn: '2026-11-02',
+      views: 1100,
+      reads: 350,
+    });
+
+    expect(response.warnings).toEqual([
+      'Просмотры меньше прошлого снимка (2026-11-01): 1100 < 1200',
+    ]);
+    expect(response.snapshot.views).toBe(1100);
+  });
+
+  it('рост без предупреждений', async () => {
+    const harness = setup();
+    const articleId = await publishedArticle(harness);
+    await harness.service.create(harness.actors.owner, {
+      articleId,
+      capturedOn: '2026-11-01',
+      views: 1200,
+      reads: 340,
+    });
+
+    const response = await harness.service.create(harness.actors.owner, {
+      articleId,
+      capturedOn: '2026-11-02',
+      views: 1300,
+      reads: 400,
+    });
+
+    expect(response.warnings).toEqual([]);
   });
 });
 

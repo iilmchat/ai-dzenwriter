@@ -2,6 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { parseMetricsCsv, splitCsvLine } from '../src/metrics/csv-parser';
 
 describe('разбор CSV метрик', () => {
+  const TODAY = '2026-12-31';
+
   it('читает канонические колонки', () => {
     const csv = [
       'url,captured_on,views,reads,avg_read_seconds',
@@ -9,7 +11,7 @@ describe('разбор CSV метрик', () => {
       'https://dzen.ru/a/two,2026-11-02,800,120,',
     ].join('\n');
 
-    const parsed = parseMetricsCsv(csv);
+    const parsed = parseMetricsCsv(csv, TODAY);
 
     expect(parsed.skipped).toEqual([]);
     expect(parsed.rows).toEqual([
@@ -38,7 +40,7 @@ describe('разбор CSV метрик', () => {
       '1200;340;https://dzen.ru/a/one;2026-11-01;95',
     ].join('\n');
 
-    const parsed = parseMetricsCsv(csv);
+    const parsed = parseMetricsCsv(csv, TODAY);
 
     expect(parsed.rows).toHaveLength(0);
     expect(parsed.skipped[0]?.reason).toContain('Нет колонок');
@@ -60,7 +62,7 @@ describe('разбор CSV метрик', () => {
       'https://dzen.ru/a/four,2026-11-04,10,2',
     ].join('\n');
 
-    const parsed = parseMetricsCsv(csv);
+    const parsed = parseMetricsCsv(csv, TODAY);
 
     expect(parsed.rows).toHaveLength(2);
     expect(parsed.skipped).toEqual([
@@ -70,8 +72,30 @@ describe('разбор CSV метрик', () => {
     ]);
   });
 
+  it('пропускает снимок из будущего с причиной', () => {
+    const csv = [
+      'url,captured_on,views,reads',
+      'https://dzen.ru/a/one,2026-11-01,1200,340',
+      'https://dzen.ru/a/two,2026-11-02,800,120',
+    ].join('\n');
+
+    const parsed = parseMetricsCsv(csv, '2026-11-01');
+
+    expect(parsed.rows).toHaveLength(1);
+    expect(parsed.skipped).toEqual([{ line: 3, reason: 'Дата снимка в будущем: 2026-11-02' }]);
+  });
+
+  it('снимок на текущую дату принимается', () => {
+    const csv = ['url,captured_on,views,reads', 'https://dzen.ru/a/one,2026-11-01,10,2'].join('\n');
+
+    const parsed = parseMetricsCsv(csv, '2026-11-01');
+
+    expect(parsed.skipped).toEqual([]);
+    expect(parsed.rows).toHaveLength(1);
+  });
+
   it('пустой файл не роняет разбор', () => {
-    expect(parseMetricsCsv('')).toEqual({
+    expect(parseMetricsCsv('', TODAY)).toEqual({
       rows: [],
       skipped: [{ line: 1, reason: 'Файл пуст' }],
     });
@@ -85,7 +109,7 @@ describe('разбор CSV метрик', () => {
       '',
     ].join('\n');
 
-    const parsed = parseMetricsCsv(csv);
+    const parsed = parseMetricsCsv(csv, TODAY);
 
     expect(parsed.rows).toHaveLength(1);
     expect(parsed.rows[0]?.line).toBe(3);

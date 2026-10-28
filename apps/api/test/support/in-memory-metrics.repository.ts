@@ -65,6 +65,20 @@ export class InMemoryMetricsRepository implements MetricsRepository {
     return { id, created: true };
   }
 
+  async findSnapshotBefore(
+    publicationId: string,
+    capturedOn: string,
+  ): Promise<MetricRow | undefined> {
+    const publication = this.publications.find((item) => item.id === publicationId);
+    if (!publication) {
+      return undefined;
+    }
+    const previous = this.snapshots
+      .filter((row) => row.articleId === publication.articleId && row.capturedOn < capturedOn)
+      .sort((left, right) => right.capturedOn.localeCompare(left.capturedOn));
+    return previous[0];
+  }
+
   async findPublicationByUrl(url: string): Promise<PublicationRef | undefined> {
     return this.publications.find((item) => item.externalUrl === url);
   }

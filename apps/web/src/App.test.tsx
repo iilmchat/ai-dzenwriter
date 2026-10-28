@@ -1038,9 +1038,25 @@ describe('приложение', () => {
         }),
       'POST /api/v1/metrics': (init) => {
         posted.push(JSON.parse(String(init?.body)));
-        return json({ snapshot: { id: '44444444-4444-4444-8444-444444444444' } });
+        return json({
+          snapshot: {
+            id: '44444444-4444-4444-8444-444444444444',
+            articleId: ARTICLE_ID,
+            topic: 'Агенты на длинных задачах',
+            externalUrl: 'https://dzen.ru/a/demo',
+            capturedOn: '2026-11-03',
+            views: 2000,
+            reads: 460,
+            avgReadSeconds: null,
+            source: 'manual',
+            createdAt: '2026-11-03T10:00:00.000Z',
+            createdBy: 'anna',
+          },
+          warnings: [],
+        });
       },
-      'POST /api/v1/metrics/import': () => json({ imported: 1, updated: 0, skipped: [] }),
+      'POST /api/v1/metrics/import': () =>
+        json({ imported: 1, updated: 0, skipped: [], warnings: [] }),
     });
 
     renderAt('/metrics');

@@ -13,8 +13,9 @@ import type {
   MetricSnapshot,
 } from '@dzenwriter/shared';
 import { ARTICLES_REPOSITORY, type ArticlesRepository } from '../articles/articles.repository';
+import { todayInMoscow } from '../common/moscow-time';
 import { parseMetricsCsv } from './csv-parser';
-import { METRICS_REPOSITORY, type MetricsRepository } from './metrics.repository';
+import { METRICS_REPOSITORY, type MetricRow, type MetricsRepository } from './metrics.repository';
 
 const SNAPSHOTS_LIMIT = 500;
 
@@ -49,6 +50,8 @@ export class MetricsService {
         'Метрики есть только у опубликованного материала: сначала отметьте публикацию',
       );
     }
+    const previous = await this.repository.findSnapshotBefore(publication.id, input.capturedOn);
+    const warnings = growthWarnings(previous, input.views, input.reads);
     const result = await this.repository.upsertSnapshot({
       publicationId: publication.id,
       capturedOn: input.capturedOn,
@@ -68,6 +71,7 @@ export class MetricsService {
         views: input.views,
         reads: input.reads,
         source: 'manual',
+        warnings: warnings.length,
       },
     });
     const rows = await this.repository.listSnapshots({
@@ -78,13 +82,19 @@ export class MetricsService {
     if (!snapshot) {
       throw new NotFoundException('Снимок метрик не найден');
     }
-    return { snapshot: toSnapshot(snapshot) };
+    return { snapshot: toSnapshot(snapshot), warnings: warnings.map((warning) => warning.reason) };
   }
 
   // Импорт CSV: ссылки на статьи в Дзене сопоставляются с публикациями.
-  async importCsv(actor: Actor, csv: string): Promise<ImportMetricsResponse> {
-    const parsed = parseMetricsCsv(csv);
+  // today — для проверки «дата снимка не в будущем»; в тестах подменяется.
+  async importCsv(
+    actor: Actor,
+    csv: string,
+    today = todayInMoscow(new Date()),
+  ): Promise<ImportMetricsResponse> {
+    const parsed = parseMetricsCsv(csv, today);
     const skipped = [...parsed.skipped];
+    const warnings: { line: number; reason: string }[] = [];
     let imported = 0;
     let updated = 0;
 
@@ -99,6 +109,10 @@ export class MetricsService {
       } catch {
         skipped.push({ line: row.line, reason: `Нет доступа к материалу со ссылкой ${row.url}` });
         continue;
+      }
+      const previous = await this.repository.findSnapshotBefore(publication.id, row.capturedOn);
+      for (const warning of growthWarnings(previous, row.views, row.reads)) {
+        warnings.push({ line: row.line, reason: warning.reason });
       }
       const result = await this.repository.upsertSnapshot({
         publicationId: publication.id,
@@ -122,10 +136,10 @@ export class MetricsService {
       // Импорт может охватывать несколько материалов, поэтому запись приписывается автору импорта.
       entityType: 'metric_import',
       entityId: actor.id,
-      payload: { imported, updated, skipped: skipped.length },
+      payload: { imported, updated, skipped: skipped.length, warnings: warnings.length },
     });
 
-    return { imported, updated, skipped };
+    return { imported, updated, skipped, warnings };
   }
 
   // Метрики вносит автор материала или администратор.
@@ -141,6 +155,29 @@ export class MetricsService {
       throw new ForbiddenException('Метрики вносит автор материала или администратор');
     }
   }
+}
+
+// Накопительные метрики не должны убывать: значения сверяются с последним снимком до даты.
+function growthWarnings(
+  previous: MetricRow | undefined,
+  views: number,
+  reads: number,
+): { readonly reason: string }[] {
+  if (!previous) {
+    return [];
+  }
+  const warnings: { readonly reason: string }[] = [];
+  if (views < previous.views) {
+    warnings.push({
+      reason: `Просмотры меньше прошлого снимка (${previous.capturedOn}): ${views} < ${previous.views}`,
+    });
+  }
+  if (reads < previous.reads) {
+    warnings.push({
+      reason: `Прочтения меньше прошлого снимка (${previous.capturedOn}): ${reads} < ${previous.reads}`,
+    });
+  }
+  return warnings;
 }
 
 function toSnapshot(row: {

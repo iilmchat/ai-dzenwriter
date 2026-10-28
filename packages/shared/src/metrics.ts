@@ -35,6 +35,8 @@ export type CreateMetricInput = z.infer<typeof createMetricInputSchema>;
 
 export const createMetricResponseSchema = z.object({
   snapshot: metricSnapshotSchema,
+  // Предупреждения не блокируют ввод: значения сохраняются, автор сверяет цифры.
+  warnings: z.array(z.string()),
 });
 export type CreateMetricResponse = z.infer<typeof createMetricResponseSchema>;
 
@@ -48,6 +50,13 @@ export const importMetricsResponseSchema = z.object({
   imported: z.number().int().nonnegative(),
   updated: z.number().int().nonnegative(),
   skipped: z.array(
+    z.object({
+      line: z.number().int(),
+      reason: z.string(),
+    }),
+  ),
+  // Предупреждения не блокируют импорт: строка сохраняется, но цифры стоит сверить.
+  warnings: z.array(
     z.object({
       line: z.number().int(),
       reason: z.string(),

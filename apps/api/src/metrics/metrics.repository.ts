@@ -44,6 +44,8 @@ export interface MetricsRepository {
   listSnapshots(filter: MetricFilter): Promise<MetricRow[]>;
   // Снимок на дату один: повторный ввод обновляет прежний, а не плодит строки.
   upsertSnapshot(snapshot: NewMetricSnapshot): Promise<{ id: string; created: boolean }>;
+  // Последний снимок публикации строго до указанной даты: с ним сверяется прирост.
+  findSnapshotBefore(publicationId: string, capturedOn: string): Promise<MetricRow | undefined>;
   findPublicationByUrl(url: string): Promise<PublicationRef | undefined>;
   findPublishedPublication(articleId: string): Promise<PublicationRef | undefined>;
   insertAudit(record: AuditRecord): Promise<void>;

@@ -1,6 +1,6 @@
 import { articles, metricSnapshots, publications, users } from '@dzenwriter/db';
 import type { MetricSource } from '@dzenwriter/shared';
-import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, desc, eq, gte, lt, lte, sql, type SQL } from 'drizzle-orm';
 import { writeAuditRecord } from '../audit/audit.record';
 import type { DbHandle } from '../database/db-handle';
 import type {
@@ -26,7 +26,24 @@ export class DrizzleMetricsRepository implements MetricsRepository {
     if (filter.to !== undefined) {
       conditions.push(lte(metricSnapshots.capturedOn, filter.to));
     }
+    return this.selectRows(conditions.length > 0 ? and(...conditions) : undefined, filter.limit);
+  }
 
+  async findSnapshotBefore(
+    publicationId: string,
+    capturedOn: string,
+  ): Promise<MetricRow | undefined> {
+    const rows = await this.selectRows(
+      and(
+        eq(metricSnapshots.publicationId, publicationId),
+        lt(metricSnapshots.capturedOn, capturedOn),
+      ),
+      1,
+    );
+    return rows[0];
+  }
+
+  private async selectRows(where: SQL | undefined, limit: number): Promise<MetricRow[]> {
     const rows = await this.db
       .select({
         id: metricSnapshots.id,
@@ -45,9 +62,9 @@ export class DrizzleMetricsRepository implements MetricsRepository {
       .innerJoin(publications, eq(publications.id, metricSnapshots.publicationId))
       .innerJoin(articles, eq(articles.id, publications.articleId))
       .innerJoin(users, eq(users.id, metricSnapshots.createdBy))
-      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .where(where)
       .orderBy(desc(metricSnapshots.capturedOn), desc(metricSnapshots.createdAt))
-      .limit(filter.limit);
+      .limit(limit);
 
     return rows.map((row) => ({
       id: row.id,
