@@ -38,7 +38,7 @@ jobs:
       DATABASE_URL: postgres://dzenwriter:dzenwriter@localhost:5432/dzenwriter
       TEST_DATABASE_URL: postgres://dzenwriter:dzenwriter@localhost:5432/dzenwriter
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
         with:
@@ -81,7 +81,7 @@ jobs:
     env:
       DATABASE_URL: postgres://dzenwriter:dzenwriter@localhost:5432/dzenwriter
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v4
         with:
@@ -110,7 +110,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 30
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - uses: actions/setup-node@v4
         with:
