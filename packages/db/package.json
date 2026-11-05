@@ -22,7 +22,7 @@
   "dependencies": {
     "@dzenwriter/shared": "workspace:*",
     "drizzle-orm": "^0.45.4",
-    "postgres": "^3.4.9"
+    "postgres": "^4.0.0"
   },
   "devDependencies": {
     "@types/node": "^24.19.2",
