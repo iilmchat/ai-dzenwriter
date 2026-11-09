@@ -142,6 +142,7 @@ prototype/       кликабельный HTML-прототип интерфей
 - [Право, персональные данные и безопасность](docs/06-legal-and-safety.md)
 - [Эксплуатация: чек-лист запуска, бэкапы и runbook LLM](docs/07-operations.md)
 - [Продуктовый backlog: P0/P1/P2 и хвосты после E11](docs/08-product-backlog.md)
+- [Промпт Архитектора/Аналитика для DeepSeek chat и пакеты файлов](docs/09-architect-prompt.md)
 - [ADR-0001. Стек и монорепозиторий](docs/adr/0001-stack-and-monorepo.md)
 - [ADR-0002. Публикация в Дзен вручную](docs/adr/0002-dzen-publishing-manual.md)
 - [ADR-0003. Стили как конфигурация](docs/adr/0003-styles-as-config.md)
