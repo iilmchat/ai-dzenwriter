@@ -199,6 +199,7 @@ function stubApi(overrides: Record<string, Handler> = {}, me: unknown = ADMIN) {
   const routes: Record<string, Handler> = {
     'GET /ready': () => json({ status: 'ready', checks: { database: 'ok' } }),
     'GET /api/v1/me': () => (me === null ? json({ status: 401 }, 401) : json(me)),
+    'GET /api/v1/notifications': () => json({ items: [], unreadCount: 0 }),
     'GET /api/v1/styles': () => json({ items: [STYLE] }),
     'GET /api/v1/formats': () => json({ items: [FORMAT] }),
     'GET /api/v1/products': () => json({ items: [] }),

@@ -27,6 +27,8 @@ import { InMemoryArticlesRepository } from './support/in-memory-articles.reposit
 import { InMemoryCatalog } from './support/in-memory-catalog';
 import { InMemoryFactsRepository } from './support/in-memory-facts.repository';
 import { InMemoryGenerationRepository } from './support/in-memory-generation.repository';
+import { InMemoryNotificationsRepository } from './support/in-memory-notifications.repository';
+import { NotificationsService } from '../src/notifications/notifications.service';
 
 const config = loadAppConfig(resolveConfigDir(path.resolve(process.cwd(), '../../config')));
 const basePrompt = loadBasePrompt(resolvePromptsDir());
@@ -56,6 +58,8 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
   const runs = new InMemoryGenerationRepository();
   const checks = new ChecksService(config);
   const limits = new GenerationLimitsService(runs, llm);
+  const notificationsRepo = new InMemoryNotificationsRepository();
+  const notifications = new NotificationsService(notificationsRepo);
   const articlesService = new ArticlesService(
     articles,
     catalog,
@@ -68,6 +72,7 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
     briefPrompt,
     fragmentPrompt,
     titlesPrompt,
+    notifications,
   );
   const service = new GenerationService(
     runs,
@@ -79,6 +84,7 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
     limits,
     basePrompt,
     expandPrompt,
+    notifications,
   );
 
   const addPerson = (login: string) => {
@@ -97,7 +103,17 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
     admin: { id: admin.id, role: 'admin' as const },
   };
 
-  return { facts, articles, catalog, runs, articlesService, service, provider, actors };
+  return {
+    facts,
+    articles,
+    catalog,
+    runs,
+    notificationsRepo,
+    articlesService,
+    service,
+    provider,
+    actors,
+  };
 }
 
 type Harness = ReturnType<typeof setup>;
@@ -397,6 +413,14 @@ describe('запуск генерации', () => {
     expect(result.status).toBe('failed');
     expect(result.errorCode).toBe('unavailable');
     expect(harness.runs.versions).toHaveLength(0);
+    expect(harness.notificationsRepo.rows).toEqual([
+      expect.objectContaining({
+        userId: harness.actors.owner.id,
+        type: 'generation_failed',
+        entityId: article.id,
+        message: `Ошибка генерации: ${TOPIC}`,
+      }),
+    ]);
   });
 
   it('повтор по ключу идемпотентности не создаёт второй запуск', async () => {

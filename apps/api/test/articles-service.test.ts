@@ -25,6 +25,8 @@ import { InMemoryArticlesRepository } from './support/in-memory-articles.reposit
 import { InMemoryCatalog } from './support/in-memory-catalog';
 import { type StoredFact, InMemoryFactsRepository } from './support/in-memory-facts.repository';
 import { InMemoryGenerationRepository } from './support/in-memory-generation.repository';
+import { InMemoryNotificationsRepository } from './support/in-memory-notifications.repository';
+import { NotificationsService } from '../src/notifications/notifications.service';
 
 const config = loadAppConfig(resolveConfigDir(path.resolve(process.cwd(), '../../config')));
 const briefPrompt = loadBriefPrompt(resolvePromptsDir());
@@ -57,6 +59,8 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
   const catalog = new InMemoryCatalog();
   const runs = new InMemoryGenerationRepository();
   const limits = new GenerationLimitsService(runs, llm);
+  const notificationsRepo = new InMemoryNotificationsRepository();
+  const notifications = new NotificationsService(notificationsRepo);
   const service = new ArticlesService(
     repo,
     catalog,
@@ -69,6 +73,7 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
     briefPrompt,
     fragmentPrompt,
     titlesPrompt,
+    notifications,
   );
   const addPerson = (login: string) => {
     const person = repo.addPerson(login);
@@ -85,7 +90,17 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
     stranger: { id: stranger.id, role: 'author' as const },
     admin: { id: admin.id, role: 'admin' as const },
   };
-  return { repo, facts, catalog, runs, service, provider, actors };
+  return {
+    repo,
+    facts,
+    catalog,
+    runs,
+    notificationsRepo,
+    notifications,
+    service,
+    provider,
+    actors,
+  };
 }
 
 type Harness = ReturnType<typeof setup>;
@@ -1079,6 +1094,77 @@ describe('переходы статусов', () => {
         NOW,
       ),
     ).rejects.toThrow(/не предусмотрен правилами/);
+  });
+});
+
+describe('уведомления при смене статуса', () => {
+  it('возврат на доработку уведомляет автора', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'in_review', { currentVersionNumber: 1 });
+    harness.repo.addVersion(article.id);
+
+    await harness.service.transition(
+      harness.actors.reviewer,
+      article.id,
+      { to: 'drafting', expectedVersion: 1, comment: 'Нужны правки' },
+      NOW,
+    );
+
+    expect(harness.notificationsRepo.rows).toEqual([
+      expect.objectContaining({
+        userId: harness.actors.owner.id,
+        type: 'article_returned',
+        entityId: article.id,
+        message: expect.stringContaining(NEWS.topic),
+      }),
+    ]);
+  });
+
+  it('утверждение уведомляет автора', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'in_review', { currentVersionNumber: 1 });
+    harness.repo.addVersion(article.id);
+
+    await harness.service.transition(
+      harness.actors.reviewer,
+      article.id,
+      { to: 'approved', expectedVersion: 1 },
+      NOW,
+    );
+
+    expect(harness.notificationsRepo.rows).toEqual([
+      expect.objectContaining({
+        userId: harness.actors.owner.id,
+        type: 'article_approved',
+        message: `Статья утверждена: ${NEWS.topic}`,
+      }),
+    ]);
+  });
+
+  it('отправка на ревью уведомляет назначенного ревьюера', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'drafting', {
+      reviewerId: harness.actors.reviewer.id,
+    });
+    harness.repo.addVersion(article.id);
+
+    await harness.service.transition(
+      harness.actors.owner,
+      article.id,
+      { to: 'in_review', expectedVersion: 1 },
+      NOW,
+    );
+
+    expect(harness.notificationsRepo.rows).toEqual([
+      expect.objectContaining({
+        userId: harness.actors.reviewer.id,
+        type: 'review_requested',
+        message: `Вам назначена статья на ревью: ${NEWS.topic}`,
+      }),
+    ]);
   });
 });
 

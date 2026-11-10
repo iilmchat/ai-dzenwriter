@@ -57,6 +57,7 @@ import {
   renderTemplate,
   sha256,
 } from '../generation/prompt-builder';
+import { NotificationsService } from '../notifications/notifications.service';
 import {
   type Actor,
   describeTransition,
@@ -157,6 +158,7 @@ export class ArticlesService {
     @Inject(BRIEF_PROMPT) private readonly briefPrompt: string,
     @Inject(FRAGMENT_PROMPT) private readonly fragmentPrompt: string,
     @Inject(TITLES_PROMPT) private readonly titlesPrompt: string,
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
   ) {}
 
   async list(query: ArticleListQuery, actorId: string): Promise<ArticleListResponse> {
@@ -791,7 +793,36 @@ export class ArticlesService {
     if (!applied) {
       throw new ConflictException(VERSION_CONFLICT);
     }
+    await this.notifyTransition(view, rule.to);
     return this.detail(actor, id);
+  }
+
+  // Уведомления по смене статуса: автор узнаёт о решении, ревьюер — о назначении.
+  private async notifyTransition(view: ArticleView, to: TransitionRule['to']): Promise<void> {
+    if (view.status === 'in_review' && to === 'drafting') {
+      await this.notifications.notify(
+        view.ownerId,
+        'article_returned',
+        `Статья возвращена на доработку: ${view.topic}`,
+        view.id,
+      );
+    }
+    if (view.status === 'in_review' && to === 'approved') {
+      await this.notifications.notify(
+        view.ownerId,
+        'article_approved',
+        `Статья утверждена: ${view.topic}`,
+        view.id,
+      );
+    }
+    if (view.status === 'drafting' && to === 'in_review' && view.reviewerId !== null) {
+      await this.notifications.notify(
+        view.reviewerId,
+        'review_requested',
+        `Вам назначена статья на ревью: ${view.topic}`,
+        view.id,
+      );
+    }
   }
 
   private async detail(actor: Actor, id: string): Promise<ArticleDetail> {

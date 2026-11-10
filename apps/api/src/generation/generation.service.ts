@@ -45,6 +45,7 @@ import {
   type LlmProvider,
   type LlmUsage,
 } from './llm-provider';
+import { NotificationsService } from '../notifications/notifications.service';
 import { GENERATION_OUTPUT_JSON_SCHEMA } from './output-schema';
 import {
   buildExpandPrompt,
@@ -112,6 +113,7 @@ export class GenerationService {
     @Inject(GenerationLimitsService) private readonly limits: GenerationLimitsService,
     @Inject(BASE_PROMPT) private readonly basePrompt: string,
     @Inject(EXPAND_PROMPT) private readonly expandPrompt: string,
+    @Inject(NotificationsService) private readonly notifications: NotificationsService,
   ) {}
 
   // Фаза до потока: все проверки, которые должны ответить обычной ошибкой, а не событием SSE.
@@ -748,6 +750,12 @@ export class GenerationService {
       entityId: plan.context.article.id,
       payload: { runId: plan.runId, errorCode },
     });
+    await this.notifications.notify(
+      plan.context.article.ownerId,
+      'generation_failed',
+      `Ошибка генерации: ${plan.context.article.topic}`,
+      plan.context.article.id,
+    );
     const result: GenerationResult = {
       runId: plan.runId,
       status: 'failed',

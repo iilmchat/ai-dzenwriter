@@ -10,6 +10,7 @@ import { GenerationModule } from './generation/generation.module';
 import { HealthModule } from './health/health.module';
 import { IdentityModule } from './identity/identity.module';
 import { MetricsModule } from './metrics/metrics.module';
+import { NotificationsModule } from './notifications/notifications.module';
 import { PilotModule } from './pilot/pilot.module';
 import { PublicationsModule } from './publications/publications.module';
 import { UsersModule } from './users/users.module';
@@ -27,6 +28,7 @@ import { UsersModule } from './users/users.module';
     GenerationModule,
     PublicationsModule,
     MetricsModule,
+    NotificationsModule,
     PilotModule,
     AuditModule,
     HealthModule,

@@ -1,6 +1,7 @@
 import { USER_ROLE_LABELS } from '@dzenwriter/shared';
 import { Link, NavLink, Outlet } from 'react-router';
 import logoIcon from '../../../../design/brand/logo-icon.svg?url';
+import { NotificationsPanel } from '../features/notifications/NotificationsPanel';
 import { useSession } from '../session/SessionContext';
 import { BUTTON_SECONDARY, FOCUS_RING } from '../shared/ui/classes';
 import { ServiceStatus } from './ServiceStatus';
@@ -55,6 +56,7 @@ export function AppShell() {
           </nav>
           {user ? (
             <div className="ml-auto flex items-center gap-3 text-sm">
+              <NotificationsPanel />
               <span>
                 {user.name ?? user.login} · {USER_ROLE_LABELS[user.role]}
               </span>

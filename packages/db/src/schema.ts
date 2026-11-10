@@ -24,6 +24,7 @@ import {
   FACT_TYPES,
   GENERATION_STATUSES,
   METRIC_SOURCES,
+  NOTIFICATION_TYPES,
   PUBLICATION_CHANNELS,
   PUBLICATION_STATUSES,
   REVIEW_DECISIONS,
@@ -70,6 +71,28 @@ export const sessions = pgTable(
     revokedAt: timestampTz('revoked_at'),
   },
   (table) => [index('sessions_user_id_idx').on(table.userId)],
+);
+
+// Внутренние уведомления пользователя. Изменяются только флагом прочтения,
+// поэтому отдельной проверки на запрет правок нет.
+export const notifications = pgTable(
+  'notifications',
+  {
+    id: uuidId(),
+    userId: uuid('user_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    type: text('type').notNull(),
+    message: text('message').notNull(),
+    entityType: text('entity_type').notNull().default('article'),
+    entityId: uuid('entity_id').notNull(),
+    isRead: boolean('is_read').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    check('notifications_type_check', oneOf(table.type.name, NOTIFICATION_TYPES)),
+    index('notifications_user_read_created_idx').on(table.userId, table.isRead, table.createdAt),
+  ],
 );
 
 export const products = pgTable('products', {
