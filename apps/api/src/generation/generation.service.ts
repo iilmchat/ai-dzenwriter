@@ -3,7 +3,9 @@ import {
   ForbiddenException,
   Inject,
   Injectable,
+  Logger,
   NotFoundException,
+  type OnApplicationBootstrap,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
@@ -100,8 +102,9 @@ interface ActiveRun {
 }
 
 @Injectable()
-export class GenerationService {
+export class GenerationService implements OnApplicationBootstrap {
   private readonly active = new Map<string, ActiveRun>();
+  private readonly logger = new Logger(GenerationService.name);
 
   constructor(
     @Inject(GENERATION_REPOSITORY) private readonly repository: GenerationRepository,
@@ -115,6 +118,47 @@ export class GenerationService {
     @Inject(EXPAND_PROMPT) private readonly expandPrompt: string,
     @Inject(NotificationsService) private readonly notifications: NotificationsService,
   ) {}
+
+  // Рестарт API посреди генерации оставлял запуск в running навсегда. При старте
+  // закрываем такие запуски и уведомляем авторов. Ошибка восстановления не мешает API подняться.
+  async onApplicationBootstrap(): Promise<void> {
+    let articleIds: string[];
+    try {
+      articleIds = await this.repository.failRunningRuns();
+    } catch (error) {
+      const reason = error instanceof Error ? error.message : String(error);
+      this.logger.warn(`Не удалось восстановить зависшие генерации: ${reason}`);
+      return;
+    }
+    if (articleIds.length === 0) {
+      return;
+    }
+
+    for (const articleId of articleIds) {
+      try {
+        await this.repository.insertAudit({
+          actorId: null,
+          action: 'generation.failed',
+          entityType: 'article',
+          entityId: articleId,
+          payload: { reason: 'interrupted' },
+        });
+        const article = await this.articles.findArticle(articleId);
+        if (article) {
+          await this.notifications.notify(
+            article.ownerId,
+            'generation_failed',
+            'Генерация прервана из-за перезагрузки сервера',
+            articleId,
+          );
+        }
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : String(error);
+        this.logger.warn(`Не удалось уведомить о прерванной генерации ${articleId}: ${reason}`);
+      }
+    }
+    this.logger.warn(`Восстановлено прерванных генераций: ${articleIds.length}`);
+  }
 
   // Фаза до потока: все проверки, которые должны ответить обычной ошибкой, а не событием SSE.
   async prepare(

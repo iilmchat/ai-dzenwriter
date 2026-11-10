@@ -4,10 +4,46 @@ import { eq } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { DrizzleArticlesRepository } from '../src/articles/drizzle-articles.repository';
 import { DrizzleGenerationRepository } from '../src/generation/drizzle-generation.repository';
+import { InMemoryGenerationRepository } from './support/in-memory-generation.repository';
 
 const testDatabaseUrl = process.env.TEST_DATABASE_URL;
 const ROLLBACK = Symbol('rollback');
 const NOW = new Date('2026-10-22T10:00:00Z');
+
+describe('failRunningRuns в памяти', () => {
+  it('закрывает только running-запуски и возвращает их материалы', async () => {
+    const repository = new InMemoryGenerationRepository();
+    const articleId = '00000000-0000-4000-8000-0000000000a1';
+    const runId = await repository.insertRun({
+      articleId,
+      provider: 'mock',
+      model: 'mock-dzen-writer',
+      promptVersion: 'sha256:test',
+      inputSnapshot: {
+        topic: 'Тема',
+        styleId: 'industry-news',
+        styleVersion: 1,
+        format: 'news',
+        tone: 'neutral',
+        lengthMin: 4000,
+        lengthMax: 6000,
+        productId: null,
+        factIds: [],
+        factLabels: [],
+        promptSha256: 'a'.repeat(64),
+      },
+      idempotencyKey: null,
+      createdBy: '00000000-0000-4000-8000-000000000001',
+    });
+
+    expect(await repository.failRunningRuns()).toEqual([articleId]);
+    expect(repository.runs.get(runId)).toMatchObject({
+      status: 'failed',
+      errorCode: 'interrupted',
+    });
+    expect(await repository.failRunningRuns()).toEqual([]);
+  });
+});
 
 type Database = ReturnType<typeof createDatabase>;
 

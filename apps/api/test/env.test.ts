@@ -11,7 +11,14 @@ describe('parseEnv', () => {
       WEB_ORIGIN: 'http://localhost:5173',
       RATE_LIMIT_MAX: 300,
       AUTH_RATE_LIMIT_MAX: 30,
+      GENERATION_RUNS_RETENTION_DAYS: 180,
     });
+  });
+
+  it('требует положительный срок хранения запусков', () => {
+    expect(() =>
+      parseEnv({ DATABASE_URL: 'postgres://x', GENERATION_RUNS_RETENTION_DAYS: '0' }),
+    ).toThrow(/GENERATION_RUNS_RETENTION_DAYS/);
   });
 
   it('требует положительные значения лимитов запросов', () => {

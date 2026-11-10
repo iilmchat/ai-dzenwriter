@@ -156,6 +156,15 @@ export class DrizzleGenerationRepository implements GenerationRepository {
     return rows[0]?.total ?? '0';
   }
 
+  async failRunningRuns(): Promise<string[]> {
+    const rows = await this.db
+      .update(generationRuns)
+      .set({ status: 'failed', errorCode: 'interrupted', finishedAt: new Date() })
+      .where(eq(generationRuns.status, 'running'))
+      .returning({ articleId: generationRuns.articleId });
+    return rows.map((row) => row.articleId);
+  }
+
   async insertAudit(record: AuditRecord): Promise<void> {
     await writeAuditRecord(this.db, record);
   }

@@ -104,6 +104,23 @@ export class InMemoryGenerationRepository implements GenerationRepository {
     return String(total);
   }
 
+  async failRunningRuns(): Promise<string[]> {
+    const articleIds: string[] = [];
+    for (const [id, run] of this.runs) {
+      if (run.status !== 'running') {
+        continue;
+      }
+      this.runs.set(id, {
+        ...run,
+        status: 'failed',
+        errorCode: 'interrupted',
+        finishedAt: this.clock,
+      });
+      articleIds.push(run.articleId);
+    }
+    return articleIds;
+  }
+
   async insertAudit(record: AuditRecord): Promise<void> {
     this.audit.push(record);
   }

@@ -173,6 +173,54 @@ function okJson(markdown: string, claimStatements: readonly string[] = []): stri
 // Новость нижняя граница 4000: 39 знаков × 120 = 4680 — внутри диапазона формата.
 const LONG_MARKDOWN = 'Развернутый абзац с фактами из списка. '.repeat(120);
 
+describe('восстановление зависших генераций', () => {
+  it('помечает running как interrupted, пишет аудит и уведомляет автора', async () => {
+    const harness = setup();
+    const article = await createReadyArticle(harness);
+    const runId = await harness.runs.insertRun({
+      articleId: article.id,
+      provider: 'mock',
+      model: 'mock-dzen-writer',
+      promptVersion: 'sha256:test',
+      inputSnapshot: {
+        topic: article.topic,
+        styleId: article.styleId,
+        styleVersion: 1,
+        format: article.format,
+        tone: article.tone,
+        lengthMin: article.lengthMin,
+        lengthMax: article.lengthMax,
+        productId: null,
+        factIds: [],
+        factLabels: [],
+        promptSha256: 'a'.repeat(64),
+      },
+      idempotencyKey: null,
+      createdBy: harness.actors.owner.id,
+    });
+
+    await harness.service.onApplicationBootstrap();
+
+    expect(harness.runs.runs.get(runId)).toMatchObject({
+      status: 'failed',
+      errorCode: 'interrupted',
+    });
+    expect(harness.runs.audit.at(-1)).toMatchObject({
+      action: 'generation.failed',
+      entityId: article.id,
+      payload: { reason: 'interrupted' },
+    });
+    expect(harness.notificationsRepo.rows).toEqual([
+      expect.objectContaining({
+        userId: harness.actors.owner.id,
+        type: 'generation_failed',
+        entityId: article.id,
+        message: 'Генерация прервана из-за перезагрузки сервера',
+      }),
+    ]);
+  });
+});
+
 type StageEvent = Extract<GenerationEvent, { readonly type: 'stage' }>;
 
 function stageEvents(events: readonly GenerationEvent[]): StageEvent[] {

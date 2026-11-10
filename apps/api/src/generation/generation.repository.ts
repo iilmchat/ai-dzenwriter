@@ -126,5 +126,8 @@ export interface GenerationRepository {
   // Счётчики лимитов: запуски пользователя за период и потраченная стоимость.
   countRunsSince(userId: string, since: Date): Promise<number>;
   sumCostSince(since: Date): Promise<string>;
+  // После рестарта API запуски, оставшиеся в running, восстановить нельзя:
+  // помечаем их interrupted и возвращаем материалы для аудита и уведомлений.
+  failRunningRuns(): Promise<string[]>;
   insertAudit(record: AuditRecord): Promise<void>;
 }

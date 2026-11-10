@@ -44,6 +44,8 @@ const envSchema = z.object({
   // Серверный токен с read:org для периодической перепроверки членства (P1-13).
   // Без него перепроверка не активна: это не ошибка запуска.
   GITHUB_ORG_TOKEN: optionalText,
+  // Сколько дней хранить историю generation_runs для скрипта retention.
+  GENERATION_RUNS_RETENTION_DAYS: z.coerce.number().int().positive().default(180),
 });
 
 export type Env = z.infer<typeof envSchema>;
