@@ -15,6 +15,7 @@ import { exportUrl } from '../api/publications';
 import { fetchVersion } from '../api/versions';
 import { ArticleEditForm } from '../features/article/ArticleEditForm';
 import { ArticleFactsPanel } from '../features/article/ArticleFactsPanel';
+import { BriefPanel } from '../features/article/BriefPanel';
 import { ChecksPanel } from '../features/article/ChecksPanel';
 import { GenerationPanel } from '../features/article/GenerationPanel';
 import { TransitionForm } from '../features/article/TransitionForm';
@@ -189,6 +190,8 @@ export function ArticlePage() {
         <RequirementsPanel article={article} />
         <TransitionForm article={article} onDone={replace} />
       </div>
+
+      <BriefPanel article={article} canEdit={canEdit} onChanged={replace} />
 
       <GenerationPanel
         article={article}

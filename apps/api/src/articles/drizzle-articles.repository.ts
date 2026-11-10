@@ -75,6 +75,7 @@ const articleSelection = {
   topic: articles.topic,
   keywords: articles.keywords,
   title: articles.title,
+  brief: articles.brief,
   styleId: articles.styleId,
   format: articles.format,
   tone: articles.tone,
@@ -102,6 +103,7 @@ interface ArticleSelectRow {
   topic: string;
   keywords: string[];
   title: string | null;
+  brief: string | null;
   styleId: string;
   format: string;
   tone: string;
@@ -252,6 +254,7 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
       .set({
         topic: changes.topic,
         keywords: changes.keywords ? [...changes.keywords] : undefined,
+        brief: changes.brief,
         styleId: changes.styleId,
         format: changes.format,
         tone: changes.tone,
@@ -571,6 +574,7 @@ function toArticleView(row: ArticleSelectRow): ArticleView {
     topic: row.topic,
     keywords: row.keywords,
     title: row.title,
+    brief: row.brief,
     styleId: row.styleId,
     format: row.format as ArticleFormat,
     tone: row.tone as Tone,

@@ -2,8 +2,10 @@ import { describe, expect, it } from 'vitest';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
 import { loadBasePrompt, loadExpandPrompt, resolvePromptsDir } from '../src/config/prompt-config';
 import {
+  BRIEF_NOT_SET,
   buildExpandPrompt,
   buildPrompt,
+  renderBrief,
   renderFacts,
   renderTemplate,
 } from '../src/generation/prompt-builder';
@@ -32,6 +34,7 @@ describe('сборка промпта', () => {
       lengthMax: 6000,
       productName: null,
       facts: [],
+      brief: null,
       today: '2026-10-22',
     });
 
@@ -127,6 +130,7 @@ describe('сборка промпта', () => {
         lengthMax: 6000,
         productName: styleId === 'product-description' ? 'Демо-продукт' : null,
         facts: styleId === 'product-description' ? [] : factForSnapshot,
+        brief: styleId === 'industry-news' ? null : '## План\n\n1. Боль читателя.\n2. Тезисы.',
         today: '2026-10-22',
       });
       expect(built.text).not.toMatch(/\{\{\w+\}\}/);
@@ -151,6 +155,7 @@ describe('сборка промпта', () => {
       lengthMax: 6000,
       productName: null,
       facts: [],
+      brief: null,
       today: '2026-10-22',
     };
 
@@ -183,10 +188,65 @@ describe('сборка промпта', () => {
       lengthMax: 6000,
       productName: null,
       facts: [],
+      brief: null,
       today: '2026-10-22',
     });
 
     expect(built.text).toBe('Значение: {{unknown_value}}');
+  });
+
+  it('подставляет бриф редактора в основной промпт', () => {
+    const style = config.styles.get('industry-news');
+    if (!style) {
+      throw new Error('Нет стиля industry-news');
+    }
+
+    const built = buildPrompt({
+      basePrompt,
+      style,
+      format: config.formats.formats.news,
+      formatId: 'news',
+      topic: 'Тема',
+      keywords: [],
+      tone: 'neutral',
+      lengthMin: 4000,
+      lengthMax: 6000,
+      productName: null,
+      facts: [],
+      brief: '## План\n\n1. Боль читателя.\n2. Тезис.',
+      today: '2026-10-22',
+    });
+
+    expect(built.text).toContain('## План');
+    expect(built.text).toContain('1. Боль читателя.');
+    expect(built.text).not.toContain(BRIEF_NOT_SET);
+  });
+
+  it('без брифа подставляет общее правило', () => {
+    const style = config.styles.get('industry-news');
+    if (!style) {
+      throw new Error('Нет стиля industry-news');
+    }
+
+    const built = buildPrompt({
+      basePrompt,
+      style,
+      format: config.formats.formats.news,
+      formatId: 'news',
+      topic: 'Тема',
+      keywords: [],
+      tone: 'neutral',
+      lengthMin: 4000,
+      lengthMax: 6000,
+      productName: null,
+      facts: [],
+      brief: null,
+      today: '2026-10-22',
+    });
+
+    expect(renderBrief(null)).toBe(BRIEF_NOT_SET);
+    expect(renderBrief('   ')).toBe(BRIEF_NOT_SET);
+    expect(built.text).toContain(BRIEF_NOT_SET);
   });
 
   it('renderTemplate набивает шаблон значениями одним проходом', () => {

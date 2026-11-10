@@ -12,7 +12,13 @@ import { ArticlesService } from '../src/articles/articles.service';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
 import { ChecksService } from '../src/checks/checks.service';
 import type { LlmConfig } from '../src/config/llm-config';
-import { loadBasePrompt, loadExpandPrompt, resolvePromptsDir } from '../src/config/prompt-config';
+import {
+  loadBasePrompt,
+  loadBriefPrompt,
+  loadExpandPrompt,
+  resolvePromptsDir,
+} from '../src/config/prompt-config';
+import { GenerationLimitsService } from '../src/generation/generation-limits.service';
 import { GenerationService, type GenerationEvent } from '../src/generation/generation.service';
 import { MockLlmProvider } from '../src/generation/mock-provider';
 import { InMemoryArticlesRepository } from './support/in-memory-articles.repository';
@@ -23,6 +29,7 @@ import { InMemoryGenerationRepository } from './support/in-memory-generation.rep
 const config = loadAppConfig(resolveConfigDir(path.resolve(process.cwd(), '../../config')));
 const basePrompt = loadBasePrompt(resolvePromptsDir());
 const expandPrompt = loadExpandPrompt(resolvePromptsDir());
+const briefPrompt = loadBriefPrompt(resolvePromptsDir());
 
 const LLM: LlmConfig = {
   provider: 'mock',
@@ -44,7 +51,18 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
   const catalog = new InMemoryCatalog();
   const runs = new InMemoryGenerationRepository();
   const checks = new ChecksService(config);
-  const articlesService = new ArticlesService(articles, catalog, facts, checks, config);
+  const limits = new GenerationLimitsService(runs, llm);
+  const articlesService = new ArticlesService(
+    articles,
+    catalog,
+    facts,
+    checks,
+    config,
+    runs,
+    provider,
+    limits,
+    briefPrompt,
+  );
   const service = new GenerationService(
     runs,
     articles,
@@ -52,7 +70,7 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
     provider,
     checks,
     config,
-    llm,
+    limits,
     basePrompt,
     expandPrompt,
   );

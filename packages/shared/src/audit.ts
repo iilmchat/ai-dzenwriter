@@ -62,6 +62,7 @@ export const AUDIT_ACTIONS = [
   'article.fact_attach',
   'article.fact_detach',
   'article.generation_confirm',
+  'article.brief_generate',
   'article.package_download',
   'version.create',
   'version.rollback',

@@ -87,6 +87,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   'article.fact_attach': 'Привязка факта',
   'article.fact_detach': 'Отвязка факта',
   'article.generation_confirm': 'Подтверждение генерации',
+  'article.brief_generate': 'Сгенерирован бриф статьи',
   'article.package_download': 'Скачивание пакета для Дзена',
   'version.create': 'Новая версия текста',
   'version.rollback': 'Откат текста',

@@ -88,6 +88,8 @@ export const updateArticleInputSchema = z
     lengthMax: lengthSchema.optional(),
     productId: productIdSchema.optional(),
     plannedAt: plannedAtSchema.optional(),
+    // Бриф (план) статьи: Markdown-текст, можно очистить.
+    brief: z.string().nullable().optional(),
   })
   .refine(lengthsInOrder, { error: LENGTH_ORDER_MESSAGE });
 export type UpdateArticleInput = z.infer<typeof updateArticleInputSchema>;
@@ -229,6 +231,8 @@ export const attachFactInputSchema = z.object({
 export type AttachFactInput = z.infer<typeof attachFactInputSchema>;
 
 export const articleDetailSchema = articleItemSchema.extend({
+  // Бриф (план) статьи до генерации текста: Markdown, nullable.
+  brief: z.string().nullable(),
   requirements: z.array(requirementSchema),
   transitions: z.array(transitionOptionSchema),
   versions: z.array(versionSummarySchema),
@@ -253,6 +257,10 @@ export const createArticleResponseSchema = z.object({
   warnings: z.array(z.string()),
 });
 export type CreateArticleResponse = z.infer<typeof createArticleResponseSchema>;
+
+// Ответ POST /api/v1/articles/{id}/brief: сгенерированный Markdown-бриф.
+export const generateBriefResponseSchema = z.object({ brief: z.string() });
+export type GenerateBriefResponse = z.infer<typeof generateBriefResponseSchema>;
 
 // Каталог стилей и форматов только для чтения: они лежат в config/ и меняются через PR.
 export const styleCardSchema = z.object({

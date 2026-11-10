@@ -33,8 +33,13 @@ export interface BuildPromptInput {
   readonly productName: string | null;
   // В модель идут только одобренные факты: заметки опыта к этому моменту уже обезличены.
   readonly facts: readonly PromptFact[];
+  // Бриф (план) статьи: Markdown из articles.brief или null, если его ещё нет.
+  readonly brief: string | null;
   readonly today: string;
 }
+
+// Подстановка, когда бриф не задан: генерация идёт по общим правилам промпта.
+export const BRIEF_NOT_SET = 'Бриф не задан, действуй по общим правилам';
 
 export interface BuiltPrompt {
   readonly text: string;
@@ -68,6 +73,7 @@ export function buildPrompt(input: BuildPromptInput): BuiltPrompt {
     length_max: String(input.lengthMax),
     product_name: input.productName ?? 'не указан',
     today: input.today,
+    brief: renderBrief(input.brief),
     facts: renderFacts(input.facts),
     style_instructions: input.style.instructions.trim(),
     fact_policy_text: FACT_POLICY_LABELS[input.style.fact_policy],
@@ -116,6 +122,11 @@ export function buildExpandPrompt(input: BuildExpandPromptInput): string {
     article_markdown: input.markdown,
   };
   return renderTemplate(input.expandPrompt, values);
+}
+
+// Бриф — план от редактора. Пустой бриф заменяется явной инструкцией.
+export function renderBrief(brief: string | null): string {
+  return brief !== null && brief.trim().length > 0 ? brief : BRIEF_NOT_SET;
 }
 
 // Факты идут как данные с метками: модель ссылается на них в claims по этим меткам.

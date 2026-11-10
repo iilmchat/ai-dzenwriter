@@ -4,6 +4,7 @@ import { ConfigError } from './errors';
 
 const BASE_PROMPT_FILE = 'dzen_writer.md';
 const EXPAND_PROMPT_FILE = 'dzen_expand.md';
+const BRIEF_PROMPT_FILE = 'dzen_brief.md';
 
 // Ищет каталог prompts/ вверх от указанной папки: так же, как ищется config/.
 export function resolvePromptsDir(explicitDir?: string, startDir: string = __dirname): string {
@@ -47,7 +48,16 @@ export function loadBasePrompt(promptsDir: string): string {
 
 // Промпт доведения объёма настраивается так же, как базовый: обязательный файл в git.
 export function loadExpandPrompt(promptsDir: string): string {
-  const file = path.join(promptsDir, EXPAND_PROMPT_FILE);
+  return loadPromptFile(promptsDir, EXPAND_PROMPT_FILE);
+}
+
+// Промпт брифа настраивается так же, как базовый: обязательный файл в git.
+export function loadBriefPrompt(promptsDir: string): string {
+  return loadPromptFile(promptsDir, BRIEF_PROMPT_FILE);
+}
+
+function loadPromptFile(promptsDir: string, name: string): string {
+  const file = path.join(promptsDir, name);
   let text: string;
   try {
     text = readFileSync(file, 'utf8');

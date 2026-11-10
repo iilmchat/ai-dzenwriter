@@ -28,6 +28,8 @@ export interface ArticleRecord {
   readonly topic: string;
   readonly keywords: readonly string[];
   readonly title: string | null;
+  // Бриф (план) статьи: Markdown до генерации текста, nullable.
+  readonly brief: string | null;
   readonly styleId: string;
   readonly format: ArticleFormat;
   readonly tone: Tone;
@@ -139,6 +141,7 @@ export interface NewArticle {
 export interface ArticleChanges {
   readonly topic?: string;
   readonly keywords?: readonly string[];
+  readonly brief?: string | null;
   readonly styleId?: string;
   readonly format?: ArticleFormat;
   readonly tone?: Tone;

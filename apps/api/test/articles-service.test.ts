@@ -2,6 +2,7 @@ import path from 'node:path';
 import {
   ConflictException,
   ForbiddenException,
+  HttpException,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
@@ -11,11 +12,28 @@ import { emptyFactTotals, OUT_OF_FOCUS_WARNING } from '../src/articles/article-r
 import { ArticlesService } from '../src/articles/articles.service';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
 import { ChecksService } from '../src/checks/checks.service';
+import type { LlmConfig } from '../src/config/llm-config';
+import { loadBriefPrompt, resolvePromptsDir } from '../src/config/prompt-config';
+import { GenerationLimitsService } from '../src/generation/generation-limits.service';
+import { MockLlmProvider } from '../src/generation/mock-provider';
 import { InMemoryArticlesRepository } from './support/in-memory-articles.repository';
 import { InMemoryCatalog } from './support/in-memory-catalog';
 import { type StoredFact, InMemoryFactsRepository } from './support/in-memory-facts.repository';
+import { InMemoryGenerationRepository } from './support/in-memory-generation.repository';
 
 const config = loadAppConfig(resolveConfigDir(path.resolve(process.cwd(), '../../config')));
+const briefPrompt = loadBriefPrompt(resolvePromptsDir());
+const LLM: LlmConfig = {
+  provider: 'mock',
+  baseUrl: undefined,
+  apiKey: undefined,
+  model: 'mock-dzen-writer',
+  timeoutMs: 1_000,
+  dailyLimitPerUser: 20,
+  dailyBudgetUsd: 5,
+  inputPricePerMtok: 0,
+  outputPricePerMtok: 0,
+};
 const NOW = new Date('2026-10-22T10:00:00Z');
 const PLAN = '2026-11-01T09:00:00.000Z';
 const DZEN_URL = 'https://dzen.ru/a/demo-article';
@@ -26,11 +44,23 @@ const NEWS: CreateArticleInput = {
   format: 'news',
 };
 
-function setup() {
+function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
   const facts = new InMemoryFactsRepository();
   const repo = new InMemoryArticlesRepository(facts);
   const catalog = new InMemoryCatalog();
-  const service = new ArticlesService(repo, catalog, facts, new ChecksService(config), config);
+  const runs = new InMemoryGenerationRepository();
+  const limits = new GenerationLimitsService(runs, llm);
+  const service = new ArticlesService(
+    repo,
+    catalog,
+    facts,
+    new ChecksService(config),
+    config,
+    runs,
+    provider,
+    limits,
+    briefPrompt,
+  );
   const addPerson = (login: string) => {
     const person = repo.addPerson(login);
     facts.people.set(person.id, person);
@@ -46,7 +76,7 @@ function setup() {
     stranger: { id: stranger.id, role: 'author' as const },
     admin: { id: admin.id, role: 'admin' as const },
   };
-  return { repo, facts, catalog, service, actors };
+  return { repo, facts, catalog, runs, service, provider, actors };
 }
 
 type Harness = ReturnType<typeof setup>;
@@ -59,6 +89,94 @@ async function createArticle(
   const response = await harness.service.create(actor, { ...NEWS, ...overrides });
   return response.article;
 }
+
+describe('бриф статьи', () => {
+  it('генерирует Markdown-бриф, сохраняет его и пишет аудит без версии статьи', async () => {
+    const provider = new MockLlmProvider({
+      steps: [{ kind: 'content', content: '## План\n\n1. Боль читателя.\n2. Тезис.' }],
+    });
+    const harness = setup(provider);
+    const article = await createArticle(harness);
+
+    const brief = await harness.service.generateBrief(harness.actors.owner, article.id, NOW);
+
+    expect(brief).toBe('## План\n\n1. Боль читателя.\n2. Тезис.');
+    expect(harness.repo.article(article.id)?.brief).toBe(brief);
+    expect(harness.repo.versions.get(article.id) ?? []).toHaveLength(0);
+    expect(harness.runs.runs.size).toBe(1);
+    expect(harness.runs.statusOf([...harness.runs.runs.keys()][0] as string)).toBe('succeeded');
+    expect(harness.repo.audit.at(-1)).toMatchObject({ action: 'article.brief_generate' });
+    expect(provider.requests[0]?.messages[0]?.content).toContain(NEWS.topic);
+  });
+
+  it('передаёт в промпт только одобренные факты', async () => {
+    const provider = new MockLlmProvider({
+      steps: [{ kind: 'content', content: '## План' }],
+    });
+    const harness = setup(provider);
+    const article = await createArticle(harness);
+    const approved = harness.facts.addFact({
+      type: 'news_source',
+      text: 'Одобренный факт про ИИ.',
+      sourceName: 'Reuters',
+      sourceUrl: 'https://example.com/ai',
+      sourcePublishedAt: '2026-10-20',
+      status: 'approved',
+      createdById: harness.actors.owner.id,
+    });
+    const draft = harness.facts.addFact({
+      type: 'company_fact',
+      text: 'Черновой факт, который в промпт не попадает.',
+      status: 'draft',
+      createdById: harness.actors.owner.id,
+    });
+    await harness.repo.attachFact(article.id, approved.id, harness.actors.owner.id);
+    await harness.repo.attachFact(article.id, draft.id, harness.actors.owner.id);
+
+    await harness.service.generateBrief(harness.actors.owner, article.id, NOW);
+
+    const prompt = provider.requests[0]?.messages[0]?.content ?? '';
+    expect(prompt).toContain('Одобренный факт про ИИ.');
+    expect(prompt).not.toContain('Черновой факт, который в промпт не попадает.');
+  });
+
+  it('чужой пользователь не генерирует бриф', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    await expect(
+      harness.service.generateBrief(harness.actors.stranger, article.id, NOW),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+  });
+
+  it('опубликованный материал не меняет бриф', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    harness.repo.setStatus(article.id, 'published');
+
+    await expect(
+      harness.service.generateBrief(harness.actors.owner, article.id, NOW),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('бриф учитывается в дневном лимите генераций', async () => {
+    const provider = new MockLlmProvider({
+      steps: [
+        { kind: 'content', content: '## План 1' },
+        { kind: 'content', content: '## План 2' },
+      ],
+    });
+    const harness = setup(provider, { ...LLM, dailyLimitPerUser: 1 });
+    const article = await createArticle(harness);
+
+    await harness.service.generateBrief(harness.actors.owner, article.id, NOW);
+
+    await expect(
+      harness.service.generateBrief(harness.actors.owner, article.id, NOW),
+    ).rejects.toBeInstanceOf(HttpException);
+    expect(harness.runs.runs.size).toBe(1);
+  });
+});
 
 describe('ручное сохранение версии и откат', () => {
   async function articleWithFacts(harness: Harness, overrides: Partial<CreateArticleInput> = {}) {

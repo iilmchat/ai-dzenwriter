@@ -36,7 +36,8 @@ export class LlmProviderError extends Error {
 export interface LlmRequest {
   readonly messages: readonly LlmMessage[];
   // JSON-схема ответа: провайдеры с поддержкой structured output передают её как есть.
-  readonly jsonSchema: Record<string, unknown>;
+  // Не задана — ответ ждём обычным текстом (например, Markdown-бриф).
+  readonly jsonSchema?: Record<string, unknown>;
   readonly temperature: number;
   // Сигнал отмены: пользователь нажал «отменить» или соединение закрылось по таймауту.
   readonly signal: AbortSignal | undefined;

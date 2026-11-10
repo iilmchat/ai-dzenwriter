@@ -1,8 +1,6 @@
 import {
   ConflictException,
   ForbiddenException,
-  HttpException,
-  HttpStatus,
   Inject,
   Injectable,
   NotFoundException,
@@ -30,9 +28,9 @@ import { ChecksService } from '../checks/checks.service';
 import { applyDisclaimer } from '../checks/disclaimer';
 import type { AppConfig } from '../config/app-config';
 import { describeIssues } from '../config/errors';
-import type { LlmConfig } from '../config/llm-config';
-import { APP_CONFIG, BASE_PROMPT, EXPAND_PROMPT, LLM_CONFIG } from '../config/tokens';
-import { moscowDayStart, todayInMoscow } from '../common/moscow-time';
+import { APP_CONFIG, BASE_PROMPT, EXPAND_PROMPT } from '../config/tokens';
+import { todayInMoscow } from '../common/moscow-time';
+import { GenerationLimitsService } from './generation-limits.service';
 import {
   GENERATION_REPOSITORY,
   type GenerationInputSnapshot,
@@ -111,7 +109,7 @@ export class GenerationService {
     @Inject(LLM_PROVIDER) private readonly provider: LlmProvider,
     @Inject(ChecksService) private readonly checks: ChecksService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
-    @Inject(LLM_CONFIG) private readonly llm: LlmConfig,
+    @Inject(GenerationLimitsService) private readonly limits: GenerationLimitsService,
     @Inject(BASE_PROMPT) private readonly basePrompt: string,
     @Inject(EXPAND_PROMPT) private readonly expandPrompt: string,
   ) {}
@@ -149,7 +147,7 @@ export class GenerationService {
       }
     }
 
-    await this.checkLimits(actor.id);
+    await this.limits.checkLimits(actor.id);
 
     const context = await this.buildContext(actor.id, article, style);
     const prompt = buildPrompt({
@@ -164,6 +162,7 @@ export class GenerationService {
       lengthMax: article.lengthMax,
       productName: context.productName,
       facts: context.facts,
+      brief: article.brief,
       today: context.today,
     });
     const snapshot: GenerationInputSnapshot = {
@@ -372,7 +371,7 @@ export class GenerationService {
         createdBy: plan.context.actorId,
       };
 
-      const costUsd = this.costOf(usage);
+      const costUsd = this.limits.costOf(usage);
       const versionNumber = await this.repository.completeRun(
         plan.runId,
         {
@@ -565,25 +564,6 @@ export class GenerationService {
     };
   }
 
-  // Суточные лимиты: запуск на пользователя и общий бюджет. 0 — лимита нет.
-  private async checkLimits(actorId: string): Promise<void> {
-    const since = moscowDayStart(new Date());
-    const used = await this.repository.countRunsSince(actorId, since);
-    if (this.llm.dailyLimitPerUser > 0 && used >= this.llm.dailyLimitPerUser) {
-      throw new HttpException(
-        `Дневной лимит генераций исчерпан: ${used} из ${this.llm.dailyLimitPerUser}. Попробуйте завтра.`,
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-    const spent = Number(await this.repository.sumCostSince(since));
-    if (this.llm.dailyBudgetUsd > 0 && spent >= this.llm.dailyBudgetUsd) {
-      throw new HttpException(
-        `Дневной бюджет генерации исчерпан: ${spent.toFixed(2)} из ${this.llm.dailyBudgetUsd} $. Попробуйте завтра.`,
-        HttpStatus.TOO_MANY_REQUESTS,
-      );
-    }
-  }
-
   private buildMessages(promptText: string): LlmMessage[] {
     return [
       { role: 'system', content: SYSTEM_PROMPT },
@@ -754,7 +734,7 @@ export class GenerationService {
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         latencyMs,
-        costUsd: this.costOf(usage),
+        costUsd: this.limits.costOf(usage),
         errorCode,
         questions: [],
         finishedAt: new Date(),
@@ -797,7 +777,7 @@ export class GenerationService {
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         latencyMs,
-        costUsd: this.costOf(usage),
+        costUsd: this.limits.costOf(usage),
         errorCode: null,
         questions: [...questions],
         finishedAt: new Date(),
@@ -839,7 +819,7 @@ export class GenerationService {
         inputTokens: usage.inputTokens,
         outputTokens: usage.outputTokens,
         latencyMs,
-        costUsd: this.costOf(usage),
+        costUsd: this.limits.costOf(usage),
         errorCode: null,
         questions: [],
         finishedAt: new Date(),
@@ -865,13 +845,6 @@ export class GenerationService {
     };
     await emit({ type: 'result', result });
     return result;
-  }
-
-  // Стоимость считается по ценам провайдера из окружения.
-  private costOf(usage: LlmUsage): number {
-    const input = (usage.inputTokens / 1_000_000) * this.llm.inputPricePerMtok;
-    const output = (usage.outputTokens / 1_000_000) * this.llm.outputPricePerMtok;
-    return Math.round((input + output) * 10_000) / 10_000;
   }
 }
 

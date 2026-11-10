@@ -28,6 +28,7 @@ import {
   type CreateArticleInput,
   type CreateArticleResponse,
   createArticleInputSchema,
+  type GenerateBriefResponse,
   saveVersionInputSchema,
   type SaveVersionInput,
   type SaveVersionResponse,
@@ -80,6 +81,16 @@ export class ArticlesController {
     @AuthUser() actor: SessionUser,
   ): Promise<ArticleDetail> {
     return this.articles.update(actor, id, body, new Date());
+  }
+
+  // Генерация брифа (плана) статьи до генерации основного текста.
+  @Post(':id/brief')
+  @HttpCode(HttpStatus.OK)
+  async generateBrief(
+    @Param('id', articleIdPipe()) id: string,
+    @AuthUser() actor: SessionUser,
+  ): Promise<GenerateBriefResponse> {
+    return { brief: await this.articles.generateBrief(actor, id, new Date()) };
   }
 
   @Post(':id/transitions')

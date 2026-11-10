@@ -132,6 +132,7 @@ const ITEM = {
 
 const DETAIL = {
   ...ITEM,
+  brief: null,
   requirements: [
     { title: 'Одобренные факты: источник новости', required: 1, actual: 0, met: false },
   ],

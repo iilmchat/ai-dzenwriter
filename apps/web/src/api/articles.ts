@@ -6,6 +6,8 @@ import {
   type ArticleListResponse,
   type CreateArticleInput,
   type CreateArticleResponse,
+  type GenerateBriefResponse,
+  generateBriefResponseSchema,
   type TransitionInput,
   type UpdateArticleInput,
 } from '@dzenwriter/shared';
@@ -60,6 +62,14 @@ export function updateArticle(id: string, input: UpdateArticleInput): Promise<Ar
     method: 'PATCH',
     body: input,
     schema: articleDetailSchema,
+  });
+}
+
+// Генерация брифа (плана) статьи до генерации текста.
+export function generateBrief(articleId: string): Promise<GenerateBriefResponse> {
+  return apiRequest(`/api/v1/articles/${articleId}/brief`, {
+    method: 'POST',
+    schema: generateBriefResponseSchema,
   });
 }
 

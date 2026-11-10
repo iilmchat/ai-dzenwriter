@@ -52,14 +52,19 @@ export class OpenAiCompatibleProvider implements LlmProvider {
             role: message.role,
             content: message.content,
           })),
-          response_format: {
-            type: 'json_schema',
-            json_schema: {
-              name: 'dzen_writer_output',
-              strict: true,
-              schema: request.jsonSchema,
-            },
-          },
+          // Без схемы ответ ждём текстом: structured output нужен только генерации статьи.
+          ...(request.jsonSchema === undefined
+            ? {}
+            : {
+                response_format: {
+                  type: 'json_schema',
+                  json_schema: {
+                    name: 'dzen_writer_output',
+                    strict: true,
+                    schema: request.jsonSchema,
+                  },
+                },
+              }),
           temperature: request.temperature,
         }),
         signal,

@@ -35,8 +35,20 @@ import type { CheckClaim } from '../checks/check-context';
 import { ChecksService } from '../checks/checks.service';
 import { applyDisclaimer } from '../checks/disclaimer';
 import type { AppConfig } from '../config/app-config';
-import { APP_CONFIG } from '../config/tokens';
+import { APP_CONFIG, BRIEF_PROMPT } from '../config/tokens';
 import { FACTS_REPOSITORY, type FactsRepository } from '../facts/facts.repository';
+import { GenerationLimitsService } from '../generation/generation-limits.service';
+import {
+  GENERATION_REPOSITORY,
+  type GenerationRepository,
+} from '../generation/generation.repository';
+import {
+  LLM_PROVIDER,
+  LlmProviderError,
+  type LlmProvider,
+  type LlmUsage,
+} from '../generation/llm-provider';
+import { type PromptFact, renderFacts, renderTemplate, sha256 } from '../generation/prompt-builder';
 import {
   type Actor,
   describeTransition,
@@ -99,6 +111,10 @@ export class ArticlesService {
     @Inject(FACTS_REPOSITORY) private readonly facts: FactsRepository,
     @Inject(ChecksService) private readonly checks: ChecksService,
     @Inject(APP_CONFIG) private readonly config: AppConfig,
+    @Inject(GENERATION_REPOSITORY) private readonly runs: GenerationRepository,
+    @Inject(LLM_PROVIDER) private readonly llm: LlmProvider,
+    @Inject(GenerationLimitsService) private readonly limits: GenerationLimitsService,
+    @Inject(BRIEF_PROMPT) private readonly briefPrompt: string,
   ) {}
 
   async list(query: ArticleListQuery, actorId: string): Promise<ArticleListResponse> {
@@ -256,6 +272,9 @@ export class ArticlesService {
     ) {
       throw new ConflictException('Опубликованный или архивный материал не переносится');
     }
+    if (input.brief !== undefined && (view.status === 'archived' || view.status === 'published')) {
+      throw new ConflictException('Опубликованный или архивный материал не меняет бриф');
+    }
     if (input.expectedVersion !== view.version) {
       throw new ConflictException(VERSION_CONFLICT);
     }
@@ -278,6 +297,7 @@ export class ArticlesService {
     const changes: ArticleChanges = {
       topic: input.topic ?? view.topic,
       keywords: input.keywords ?? view.keywords,
+      brief: input.brief !== undefined ? input.brief : view.brief,
       styleId: style.id,
       format,
       tone: input.tone ?? view.tone,
@@ -304,6 +324,132 @@ export class ArticlesService {
       throw new ConflictException(VERSION_CONFLICT);
     }
     return this.detail(actor, id);
+  }
+
+  // Бриф (план) статьи: LLM-вызов до генерации текста. Версия статьи не создаётся,
+  // но запуск и расход токенов пишутся в generation_runs и считаются в дневном лимите.
+  async generateBrief(actor: Actor, id: string, now: Date): Promise<string> {
+    const view = await this.requireView(id);
+    if (actor.id !== view.ownerId && actor.role !== 'admin') {
+      throw new ForbiddenException('Сгенерировать бриф может его автор или администратор');
+    }
+    if (view.status === 'published' || view.status === 'archived') {
+      throw new ConflictException(
+        'Бриф генерируется до публикации: опубликованный или архивный материал не меняется',
+      );
+    }
+
+    const style = this.requireStyle(view.styleId);
+    const format = this.config.formats.formats[view.format];
+    await this.limits.checkLimits(actor.id);
+
+    const linked = await this.repository.listLinkedFacts(id);
+    const facts: PromptFact[] = linked
+      .filter((fact) => fact.status === 'approved')
+      .map((fact) => ({
+        factId: fact.factId,
+        label: fact.label,
+        type: fact.type,
+        text: fact.text,
+        sourceName: fact.sourceName,
+        sourceUrl: fact.sourceUrl,
+        sourcePublishedAt: fact.sourcePublishedAt,
+      }));
+    const prompt = renderTemplate(this.briefPrompt, {
+      topic: view.topic,
+      style: style.name,
+      format: format.name,
+      facts: renderFacts(facts),
+    });
+    const promptVersion = `brief:sha256:${sha256(prompt).slice(0, 16)}`;
+    const runId = await this.runs.insertRun({
+      articleId: id,
+      provider: this.llm.name,
+      model: this.llm.model,
+      promptVersion,
+      inputSnapshot: {
+        topic: view.topic,
+        styleId: style.id,
+        styleVersion: style.version,
+        format: view.format,
+        tone: view.tone,
+        lengthMin: view.lengthMin,
+        lengthMax: view.lengthMax,
+        productId: view.productId,
+        factIds: facts.map((fact) => fact.factId),
+        factLabels: facts.map((fact) => fact.label),
+        promptSha256: sha256(prompt),
+      },
+      idempotencyKey: null,
+      createdBy: actor.id,
+    });
+
+    const startedAt = Date.now();
+    let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+    let brief: string;
+    try {
+      const response = await this.llm.generate({
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.3,
+        signal: undefined,
+      });
+      usage = response.usage;
+      brief = response.content.trim();
+      if (brief.length === 0) {
+        throw new LlmProviderError('invalid_response', 'Провайдер вернул пустой бриф');
+      }
+    } catch (error) {
+      const errorCode = error instanceof LlmProviderError ? error.code : 'unavailable';
+      await this.runs.completeRun(
+        runId,
+        {
+          status: errorCode === 'aborted' ? 'cancelled' : 'failed',
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          latencyMs: Date.now() - startedAt,
+          costUsd: this.limits.costOf(usage),
+          errorCode,
+          questions: [],
+          finishedAt: new Date(),
+        },
+        null,
+      );
+      throw error;
+    }
+
+    const latencyMs = Date.now() - startedAt;
+    await this.runs.completeRun(
+      runId,
+      {
+        status: 'succeeded',
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        latencyMs,
+        costUsd: this.limits.costOf(usage),
+        errorCode: null,
+        questions: [],
+        finishedAt: now,
+      },
+      null,
+    );
+
+    const applied = await this.repository.withTransaction(async (tx) => {
+      const updated = await tx.updateArticle(id, view.version, { brief }, now);
+      if (updated) {
+        await tx.insertAudit({
+          actorId: actor.id,
+          action: 'article.brief_generate',
+          entityType: 'article',
+          entityId: id,
+          payload: { runId, inputTokens: usage.inputTokens, outputTokens: usage.outputTokens },
+        });
+      }
+      return updated;
+    });
+    if (!applied) {
+      throw new ConflictException(VERSION_CONFLICT);
+    }
+    return brief;
   }
 
   async transition(
@@ -408,6 +554,7 @@ export class ArticlesService {
     ]);
     return {
       ...toArticleItem(view, this.styleName(view.styleId)),
+      brief: view.brief,
       requirements: context.style
         ? inputRequirements(context.style, context.totals, view.productId)
         : [],

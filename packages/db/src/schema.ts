@@ -91,6 +91,8 @@ export const articles = pgTable(
       .notNull()
       .default(sql`'{}'`),
     title: text('title'),
+    // Бриф (план) статьи до генерации текста: Markdown, nullable.
+    brief: text('brief'),
     styleId: text('style_id').notNull(),
     format: text('format').notNull(),
     tone: text('tone').notNull(),

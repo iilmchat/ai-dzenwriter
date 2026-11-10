@@ -143,6 +143,7 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
       topic: article.topic,
       keywords: [...article.keywords],
       title: null,
+      brief: null,
       styleId: article.styleId,
       format: article.format,
       tone: article.tone,
