@@ -33,6 +33,7 @@ export interface IdentityRepository {
   withTransaction<T>(work: (repository: IdentityRepository) => Promise<T>): Promise<T>;
   findUserById(id: string): Promise<UserRow | undefined>;
   findUserByGithubId(githubId: number): Promise<UserRow | undefined>;
+  findUserByLogin(login: string): Promise<UserRow | undefined>;
   listUsers(): Promise<UserRow[]>;
   countActiveAdmins(): Promise<number>;
   upsertUser(input: UserUpsert): Promise<UserRow>;

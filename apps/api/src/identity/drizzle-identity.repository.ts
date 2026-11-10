@@ -32,6 +32,11 @@ export class DrizzleIdentityRepository implements IdentityRepository {
     return row ? toUserRow(row) : undefined;
   }
 
+  async findUserByLogin(login: string): Promise<UserRow | undefined> {
+    const [row] = await this.db.select().from(users).where(eq(users.login, login)).limit(1);
+    return row ? toUserRow(row) : undefined;
+  }
+
   async listUsers(): Promise<UserRow[]> {
     const rows = await this.db.select().from(users).orderBy(users.createdAt, users.login);
     return rows.map(toUserRow);

@@ -41,6 +41,7 @@ export const AUDIT_ACTIONS = [
   'auth.login',
   'auth.logout',
   'auth.denied',
+  'auth.login_conflict',
   'user.role_change',
   'user.disable',
   'user.enable',

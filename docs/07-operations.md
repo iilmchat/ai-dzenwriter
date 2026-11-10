@@ -60,7 +60,7 @@ DzenWriter запускается как один стек Docker Compose на �
 | --- | ---------------------------------------------------------------------------------- | --------- | --------- | ---------------------------------------------------------------------------------------------- |
 | 9   | Домен, TLS-сертификат и внешний reverse proxy настроены                            | Tech lead | Да        | Открыто                                                                                        |
 | 10  | `WEB_ORIGIN` совпадает с публичным HTTPS-адресом                                   | Tech lead | Да        | Открыто; проверяется при старте API                                                            |
-| 11  | OAuth App: callback URL и членство в организации проверены                         | Tech lead | Да        | Открыто                                                                                        |
+| 11  | OAuth App: callback URL и членство в организации проверены                         | Tech lead | Да        | Открыто; организация: `iilmchat`                                                               |
 | 12  | `ADMIN_GITHUB_LOGINS` задан, первый администратор вошёл                            | Tech lead | Да        | Открыто                                                                                        |
 | 13  | `POSTGRES_PASSWORD` и `LLM_API_KEY` — не значения из примера, `.env` с правами 600 | Tech lead | Да        | Открыто                                                                                        |
 | 14  | Порт PostgreSQL недоступен снаружи хоста                                           | Tech lead | Да        | В compose привязан к `127.0.0.1`; проверить firewall                                           |
@@ -269,6 +269,8 @@ pnpm --filter @dzenwriter/api membership:recheck
 docker compose exec -T api node dist/scripts/membership-recheck.js
 ```
 
+Внимание (P0-4): скрипт `membership-recheck.ts` должен быть перенесён из `apps/api/scripts` в `src/scripts` и попадать в `dist`, иначе `node dist/scripts/membership-recheck.js` не работает. Токен `GITHUB_ORG_TOKEN` должен быть добавлен в `docker-compose.yml` (сервис `api`).
+
 Рекомендуемое расписание — ежедневно в 04:00 по Москве:
 
 ```cron
@@ -346,7 +348,7 @@ docker compose exec -T postgres psql \
    - изменить `LLM_BASE_URL`, `LLM_API_KEY`, `LLM_MODEL` в `.env` на хосте;
    - пересоздать API: `docker compose up -d --force-recreate api`;
    - проверить генерацию на тестовом материале.
-4. Не включайте `LLM_PROVIDER=mock` в продакшене: заглушка создаст версию с фиктивным текстом, которую можно принять за настоящую.
+4. Не включайте `LLM_PROVIDER=mock` в продакшене: заглушка создаст версию с фиктивным текстом, которую можно принять за настоящую. При `NODE_ENV=production` и `LLM_PROVIDER=mock` старт API и `config:validate` завершаются ошибкой конфигурации (P0-4).
 5. После восстановления проверьте, что новый запуск имеет статус `succeeded`, и сообщите команде.
 
 ### 5.4. Исчерпан лимит или бюджет

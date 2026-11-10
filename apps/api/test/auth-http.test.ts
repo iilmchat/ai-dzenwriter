@@ -64,17 +64,19 @@ describe('вход, сессии и роли по HTTP', () => {
     await app.close();
   });
 
-  // Полный вход: старт, возврат с code и state, выдача cookie сессии.
-  async function signIn(): Promise<{ sessionCookie: string; location: string }> {
+  // Возврат с code и state: ответ нужен и для успеха, и для проверки ошибок.
+  async function callbackWithState(): Promise<Response> {
     const start = await fetch(`${baseUrl}/api/v1/auth/github/start`, { redirect: 'manual' });
     const state = cookieValue(start, 'dzw_oauth_state') ?? '';
-    const callback = await fetch(
-      `${baseUrl}/api/v1/auth/github/callback?code=code-1&state=${state}`,
-      {
-        redirect: 'manual',
-        headers: { Cookie: `dzw_oauth_state=${state}` },
-      },
-    );
+    return fetch(`${baseUrl}/api/v1/auth/github/callback?code=code-1&state=${state}`, {
+      redirect: 'manual',
+      headers: { Cookie: `dzw_oauth_state=${state}` },
+    });
+  }
+
+  // Полный вход: старт, возврат с code и state, выдача cookie сессии.
+  async function signIn(): Promise<{ sessionCookie: string; location: string }> {
+    const callback = await callbackWithState();
     return {
       sessionCookie: cookieValue(callback, 'dzw_session') ?? '',
       location: callback.headers.get('location') ?? '',
@@ -231,6 +233,72 @@ describe('вход, сессии и роли по HTTP', () => {
 
     const me = await fetch(`${baseUrl}/api/v1/me`, { headers: { Cookie: adminCookie } });
     expect(me.status).toBe(401);
+  });
+
+  it('смена логина на занятый возвращает 409, пишет аудит и не меняет логин', async () => {
+    const alice = repository.addUser({ githubId: 11, login: 'conflict-alice' });
+    const bob = repository.addUser({ githubId: 12, login: 'conflict-bob' });
+    github.profile = { id: 11, login: 'conflict-bob', name: 'Alice' };
+    try {
+      const response = await callbackWithState();
+
+      expect(response.status).toBe(409);
+      expect(response.headers.get('content-type')).toContain('application/problem+json');
+      expect(await response.json()).toMatchObject({
+        type: 'about:blank',
+        title: 'Конфликт логина GitHub',
+        status: 409,
+        detail: 'Пользователь с логином conflict-bob уже существует. Обратитесь к администратору.',
+      });
+
+      const conflictAudit = repository.audit
+        .filter((record) => record.action === 'auth.login_conflict')
+        .at(-1);
+      expect(conflictAudit).toMatchObject({
+        actorId: alice.id,
+        entityType: 'user',
+        entityId: alice.id,
+        payload: {
+          githubId: 11,
+          conflictingUserId: bob.id,
+          existingUser: true,
+        },
+      });
+      expect([...repository.users.values()].find((user) => user.id === alice.id)?.login).toBe(
+        'conflict-alice',
+      );
+    } finally {
+      github.profile = { id: 1001, login: 'anna', name: 'Анна Иванова' };
+    }
+  });
+
+  it('новый github_id с занятым логином возвращает 409 с понятным текстом', async () => {
+    const bob = repository.addUser({ githubId: 22, login: 'taken-login' });
+    github.profile = { id: 23, login: 'taken-login', name: 'Новый' };
+    try {
+      const response = await callbackWithState();
+
+      expect(response.status).toBe(409);
+      expect(response.headers.get('content-type')).toContain('application/problem+json');
+      const body = (await response.json()) as { detail: string };
+      expect(body.detail).toContain('уже существует');
+
+      const conflictAudit = repository.audit
+        .filter((record) => record.action === 'auth.login_conflict')
+        .at(-1);
+      expect(conflictAudit).toMatchObject({
+        actorId: null,
+        entityId: 'unknown',
+        payload: {
+          githubId: 23,
+          conflictingUserId: bob.id,
+          existingUser: false,
+        },
+      });
+      expect([...repository.users.values()].some((user) => user.githubId === 23)).toBe(false);
+    } finally {
+      github.profile = { id: 1001, login: 'anna', name: 'Анна Иванова' };
+    }
   });
 
   it('health остаётся открытым без входа', async () => {

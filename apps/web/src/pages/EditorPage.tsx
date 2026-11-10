@@ -8,7 +8,7 @@ import {
   type VersionDetail,
   type VersionSummary,
 } from '@dzenwriter/shared';
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
 import { fetchArticle, transitionArticle } from '../api/articles';
 import { ApiError, errorMessage } from '../api/client';
@@ -20,12 +20,11 @@ import {
   rollbackVersion,
   saveVersion,
 } from '../api/versions';
-import { ArticlePreview } from '../features/editor/ArticlePreview';
 import { ClaimsEditor, type ClaimDraft, EditorMetadata } from '../features/editor/ClaimsEditor';
 import { CommandPalette, type Command } from '../features/editor/CommandPalette';
 import { ConflictDialog } from '../features/editor/ConflictDialog';
 import { EditorChecksPanel } from '../features/editor/EditorChecksPanel';
-import { MarkdownEditor, type MarkdownEditorHandle } from '../features/editor/MarkdownEditor';
+import type { MarkdownEditorHandle } from '../features/editor/MarkdownEditor';
 import { VersionHistory } from '../features/editor/VersionHistory';
 import { formatDateTime } from '../lib/format';
 import { useSession } from '../session/SessionContext';
@@ -38,6 +37,19 @@ import {
   PANEL_CLASS,
 } from '../shared/ui/classes';
 import { Notice } from '../shared/ui/Notice';
+
+// Тяжёлые части редактора грузятся отдельно: CodeMirror и markdown-рендер
+// не попадают в чанк страницы и скачиваются только при её открытии.
+const ArticlePreview = lazy(() =>
+  import('../features/editor/ArticlePreview').then((module) => ({
+    default: module.ArticlePreview,
+  })),
+);
+const MarkdownEditor = lazy(() =>
+  import('../features/editor/MarkdownEditor').then((module) => ({
+    default: module.MarkdownEditor,
+  })),
+);
 
 const CHECK_DEBOUNCE_MS = 900;
 
@@ -512,21 +524,25 @@ export function EditorPage() {
             />
           </div>
           <div className="mt-3 min-h-[420px]">
-            <MarkdownEditor
-              ref={editor}
-              value={draft.articleMarkdown}
-              placeholder="Текст статьи в Markdown"
-              onChange={(articleMarkdown) => setDraft({ ...draft, articleMarkdown })}
-              onSave={() => void save()}
-              onGenerate={() => void generate()}
-              onCommandPalette={() => setPaletteOpen(true)}
-            />
+            <Suspense fallback={<div>Загрузка...</div>}>
+              <MarkdownEditor
+                ref={editor}
+                value={draft.articleMarkdown}
+                placeholder="Текст статьи в Markdown"
+                onChange={(articleMarkdown) => setDraft({ ...draft, articleMarkdown })}
+                onSave={() => void save()}
+                onGenerate={() => void generate()}
+                onCommandPalette={() => setPaletteOpen(true)}
+              />
+            </Suspense>
           </div>
         </section>
 
         <section className={PANEL_CLASS} aria-label="Предпросмотр">
           <h2 className="font-display text-lg font-bold">Предпросмотр, как в Дзене</h2>
-          <ArticlePreview title={draft.title} markdown={draft.articleMarkdown} checks={checks} />
+          <Suspense fallback={<div>Загрузка...</div>}>
+            <ArticlePreview title={draft.title} markdown={draft.articleMarkdown} checks={checks} />
+          </Suspense>
         </section>
 
         <EditorChecksPanel

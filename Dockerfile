@@ -3,7 +3,7 @@
 # Образы api и web собираются из одного монорепозитория. Зависимости ставятся
 # один раз по lock-файлу, а итоговые образы содержат только нужное для запуска.
 FROM node:24-alpine AS base
-RUN npm install --global pnpm@12.11.2
+RUN corepack enable && corepack prepare pnpm@12.11.2 --activate
 ENV CI=true
 WORKDIR /app
 

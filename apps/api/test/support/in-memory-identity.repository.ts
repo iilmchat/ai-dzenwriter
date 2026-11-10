@@ -34,6 +34,10 @@ export class InMemoryIdentityRepository implements IdentityRepository {
     return [...this.users.values()].find((user) => user.githubId === githubId);
   }
 
+  async findUserByLogin(login: string): Promise<UserRow | undefined> {
+    return [...this.users.values()].find((user) => user.login === login);
+  }
+
   async listUsers(): Promise<UserRow[]> {
     return [...this.users.values()];
   }
@@ -45,6 +49,17 @@ export class InMemoryIdentityRepository implements IdentityRepository {
   }
 
   async upsertUser(input: UserUpsert): Promise<UserRow> {
+    const loginOwner = await this.findUserByLogin(input.login);
+    if (loginOwner !== undefined && loginOwner.githubId !== input.githubId) {
+      // Повторяем ограничение users_login_unique: сервис входа распознаёт его по коду PostgreSQL.
+      const error = new Error(
+        'duplicate key value violates unique constraint "users_login_unique"',
+      ) as Error & {
+        code: string;
+      };
+      error.code = '23505';
+      throw error;
+    }
     const existing = await this.findUserByGithubId(input.githubId);
     const user: UserRow = existing
       ? {

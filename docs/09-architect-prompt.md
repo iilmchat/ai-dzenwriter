@@ -77,9 +77,11 @@ LLM_DAILY_BUDGET_USD; стоимость считается по ценам за
   (NestJS 12.3.2, React Router 8.5.1, postgres 4.0.0), HEAD 475c9fe.
 - Срез 1 (качество golden-прогонов) закрыт: 1.1–1.4.
 - Срез 2: 2.1 (P2-17, морфология имён) и 2.2 (P2-14, валидация CSV) закрыты.
-  Следующие: 2.3 (P2-16, конфликт смены GitHub-логина: сейчас 500, нужно
-  409 problem+json + аудит + диагностика), 2.4 (P2-15, ускорение сборки образа
-  и чанка редактора).
+  Следующие: 2.3 (P2-16, конфликт смены GitHub-логина: 409 problem+json для
+  существующего и нового `github_id`, аудит, диагностика) и 2.4 (P2-15, corepack,
+  lazy-чанки редактора и предпросмотра, потолок 1000 kB). Блокеры DevOps (P0-4):
+  guard mock, `/ready`, `membership-recheck` в `dist`, `GITHUB_ORG_TOKEN`, GHCR,
+  мониторинг.
 - Батарея перед коммитом: format, format:check, lint, typecheck, build,
   config:validate, test (427: api 359, web 39, shared 21, db 8), test:e2e (5),
   затем обязательный отзыв сессий (dev:revoke-sessions).
@@ -91,6 +93,7 @@ LLM_DAILY_BUDGET_USD; стоимость считается по ценам за
   по решению владельца).
 - Стенд владельца: docker compose, веб на 8180, postgres на 5442;
   локальная разработка — API 4000, веб 5173 (порты из .env).
+- Организация GitHub: `iilmchat`.
 - Ограничения среды: Windows/PowerShell (кириллица в аргументах ломается),
   две рабочие машины, синхронизация через origin/main; force-push в main запрещён;
   коммиты на русском + Co-Authored-By: opencode.

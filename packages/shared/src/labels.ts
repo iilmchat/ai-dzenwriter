@@ -66,6 +66,7 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   'auth.login': 'Вход',
   'auth.logout': 'Выход',
   'auth.denied': 'Отказ во входе',
+  'auth.login_conflict': 'Конфликт логина GitHub',
   'user.role_change': 'Смена роли',
   'user.disable': 'Отключение пользователя',
   'user.enable': 'Включение пользователя',

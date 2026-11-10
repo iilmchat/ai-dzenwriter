@@ -24,8 +24,30 @@ const proxy = {
   '/ready': { target: apiTarget },
 };
 
+// Vite 8 собирает через Rolldown: вместо rollupOptions.output.manualChunks
+// группы чанков задаются через output.codeSplitting.groups.
+const VENDOR_GROUPS = [
+  {
+    name: 'codemirror',
+    test: /[\\/]node_modules[\\/](?:@codemirror|@lezer|codemirror|style-mod|w3c-keyname|crelt)[\\/]/,
+  },
+  {
+    name: 'markdown',
+    test: /[\\/]node_modules[\\/](?:react-markdown|remark-[^\\/]+|rehype-[^\\/]+|unified|mdast-[^\\/]+|hast-[^\\/]+|micromark[^\\/]*|vfile[^\\/]*|unist-[^\\/]+)[\\/]/,
+  },
+];
+
 export default defineConfig({
   plugins: [react(), tailwindcss()],
+  build: {
+    rolldownOptions: {
+      output: {
+        codeSplitting: {
+          groups: VENDOR_GROUPS,
+        },
+      },
+    },
+  },
   server: {
     host: '127.0.0.1',
     port: Number(setting('WEB_DEV_PORT', '5173')),

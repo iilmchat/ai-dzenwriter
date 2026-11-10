@@ -10,7 +10,7 @@ import {
 import { describe, expect, it } from 'vitest';
 
 const NOW = new Date('2026-10-27T09:00:00Z');
-const ORG = 'iiruchating';
+const ORG = 'iilmchat';
 
 function makeStore(targets: MembershipTarget[]): {
   store: MembershipStore;

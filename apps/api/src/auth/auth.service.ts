@@ -1,9 +1,19 @@
-import { Inject, Injectable, ServiceUnavailableException } from '@nestjs/common';
+import {
+  ConflictException,
+  Inject,
+  Injectable,
+  Logger,
+  ServiceUnavailableException,
+} from '@nestjs/common';
 import type { UserRole } from '@dzenwriter/shared';
 import { timingSafeEqual } from 'node:crypto';
 import type { AuthConfig, GithubAuthConfig } from '../config/auth-config';
 import { AUTH_CONFIG } from '../config/tokens';
-import { IDENTITY_REPOSITORY, type IdentityRepository } from '../identity/identity.repository';
+import {
+  IDENTITY_REPOSITORY,
+  type IdentityRepository,
+  type UserRow,
+} from '../identity/identity.repository';
 import { SESSION_TTL_MS } from './cookies';
 import {
   GITHUB_OAUTH,
@@ -33,6 +43,8 @@ export interface SessionUser {
 
 @Injectable()
 export class AuthService {
+  private readonly logger = new Logger(AuthService.name);
+
   constructor(
     @Inject(AUTH_CONFIG) private readonly config: AuthConfig,
     @Inject(GITHUB_OAUTH) private readonly github: GithubOAuth,
@@ -112,26 +124,40 @@ export class AuthService {
     const sessionToken = createOpaqueToken();
     const expiresAt = new Date(input.now.getTime() + SESSION_TTL_MS);
 
-    await this.repository.withTransaction(async (tx) => {
-      const user = await tx.upsertUser({
-        githubId: profile.id,
-        login: profile.login,
-        name: profile.name,
-        makeAdmin,
+    let loginConflict = false;
+    try {
+      await this.repository.withTransaction(async (tx) => {
+        let user: UserRow;
+        try {
+          user = await tx.upsertUser({
+            githubId: profile.id,
+            login: profile.login,
+            name: profile.name,
+            makeAdmin,
+          });
+        } catch (error) {
+          loginConflict = isUniqueViolation(error);
+          throw error;
+        }
+        await tx.insertSession({
+          userId: user.id,
+          tokenHash: hashSessionToken(sessionToken),
+          expiresAt,
+        });
+        await tx.insertAudit({
+          actorId: user.id,
+          action: 'auth.login',
+          entityType: 'user',
+          entityId: user.id,
+          payload: { created: existing === undefined, bootstrapAdmin: makeAdmin },
+        });
       });
-      await tx.insertSession({
-        userId: user.id,
-        tokenHash: hashSessionToken(sessionToken),
-        expiresAt,
-      });
-      await tx.insertAudit({
-        actorId: user.id,
-        action: 'auth.login',
-        entityType: 'user',
-        entityId: user.id,
-        payload: { created: existing === undefined, bootstrapAdmin: makeAdmin },
-      });
-    });
+    } catch (error) {
+      if (!loginConflict || !isUniqueViolation(error)) {
+        throw error;
+      }
+      await this.reportLoginConflict(profile, existing);
+    }
 
     return { ok: true, sessionToken, expiresAt };
   }
@@ -167,12 +193,58 @@ export class AuthService {
     });
   }
 
+  // PostgreSQL прерывает транзакцию после нарушения уникальности, поэтому аудит
+  // пишем отдельным соединением — уже после отката неудавшегося upsert.
+  private async reportLoginConflict(
+    profile: GithubProfile,
+    existing: UserRow | undefined,
+  ): Promise<never> {
+    const conflicting = await this.repository.findUserByLogin(profile.login);
+    await this.repository.insertAudit({
+      actorId: existing?.id ?? null,
+      action: 'auth.login_conflict',
+      entityType: 'user',
+      entityId: existing?.id ?? 'unknown',
+      payload: {
+        githubId: profile.id,
+        conflictingUserId: conflicting?.id ?? null,
+        existingUser: existing !== undefined,
+      },
+    });
+    this.logger.warn(
+      {
+        event: 'auth.login_conflict',
+        githubId: profile.id,
+        existingUserId: existing?.id ?? null,
+        newLogin: profile.login,
+        conflictingUserId: conflicting?.id ?? null,
+        conflictingLogin: conflicting?.login ?? null,
+      },
+      'Конфликт логина GitHub',
+    );
+    throw new ConflictException({
+      type: 'about:blank',
+      title: 'Конфликт логина GitHub',
+      status: 409,
+      detail: `Пользователь с логином ${profile.login} уже существует. Обратитесь к администратору.`,
+    });
+  }
+
   private requireGithub(): GithubAuthConfig {
     if (!this.config.github) {
       throw new ServiceUnavailableException('Вход через GitHub не настроен');
     }
     return this.config.github;
   }
+}
+
+function isUniqueViolation(error: unknown): error is { code: '23505' } {
+  return (
+    typeof error === 'object' &&
+    error !== null &&
+    'code' in error &&
+    (error as { code?: unknown }).code === '23505'
+  );
 }
 
 function equalInConstantTime(left: string, right: string): boolean {
