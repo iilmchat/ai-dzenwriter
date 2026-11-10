@@ -111,6 +111,23 @@ export const reviewRubricSchema = z.object({
 });
 export type ReviewRubric = z.infer<typeof reviewRubricSchema>;
 
+// Данные, без которых переход не выполнить. Доска спрашивает их до вызова API.
+export type TransitionRequirement =
+  { readonly required: 'url' | 'comment' } | { readonly required: null };
+
+export function getTransitionRequirements(
+  from: ArticleStatus,
+  to: ArticleStatus,
+): TransitionRequirement {
+  if (to === 'published') {
+    return { required: 'url' };
+  }
+  if (from === 'in_review' && to === 'drafting') {
+    return { required: 'comment' };
+  }
+  return { required: null };
+}
+
 export const transitionInputSchema = z.object({
   to: z.enum(ARTICLE_STATUSES, { error: 'Неизвестный статус' }),
   expectedVersion: z.number().int().min(1),

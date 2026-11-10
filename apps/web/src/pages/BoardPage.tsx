@@ -1,5 +1,6 @@
 import {
   ARTICLE_STATUS_LABELS,
+  getTransitionRequirements,
   type ArticleItem,
   type ArticleStatus,
   type CreateArticleResponse,
@@ -13,6 +14,7 @@ import { ArticleCard, type MoveOption } from '../features/board/ArticleCard';
 import { BoardFilters } from '../features/board/BoardFilters';
 import { CreateArticleForm } from '../features/board/CreateArticleForm';
 import { nextStepFor } from '../features/board/nextStep';
+import { TransitionDialog } from '../features/board/TransitionDialog';
 import { useCatalog } from '../features/catalog/useCatalog';
 import { useSession } from '../session/SessionContext';
 import { BUTTON_PRIMARY, FOCUS_RING, PANEL_CLASS } from '../shared/ui/classes';
@@ -64,6 +66,12 @@ interface Confirmation {
   readonly warnings: readonly string[];
 }
 
+interface PendingMove {
+  readonly article: ArticleItem;
+  readonly target: ArticleStatus;
+  readonly required: 'url' | 'comment';
+}
+
 export function BoardPage() {
   const catalog = useCatalog();
   const { state: session } = useSession();
@@ -79,6 +87,7 @@ export function BoardPage() {
   const [dropTarget, setDropTarget] = useState<ArticleStatus | undefined>(undefined);
   const [moveError, setMoveError] = useState<string | undefined>(undefined);
   const [moving, setMoving] = useState(false);
+  const [pendingMove, setPendingMove] = useState<PendingMove | undefined>(undefined);
   const filterKey = JSON.stringify(filters);
 
   useEffect(() => {
@@ -131,14 +140,30 @@ export function BoardPage() {
       return;
     }
 
-    setMoving(true);
-    setMoveError(undefined);
     setDraggingId(undefined);
     setDropTarget(undefined);
+    const requirement = getTransitionRequirements(article.status, target);
+    if (requirement.required !== null) {
+      setMoveError(undefined);
+      setPendingMove({ article, target, required: requirement.required });
+      return;
+    }
+    await performMove(article, target, {});
+  }
+
+  // API вызывается только после диалога или сразу, если обязательных данных нет.
+  async function performMove(
+    article: ArticleItem,
+    target: ArticleStatus,
+    extra: { readonly externalUrl?: string; readonly comment?: string },
+  ): Promise<void> {
+    setMoving(true);
+    setMoveError(undefined);
     try {
       const updated = await transitionArticle(article.id, {
         to: target,
         expectedVersion: article.version,
+        ...extra,
       });
       setBoard((current) =>
         current.phase === 'ready'
@@ -153,6 +178,19 @@ export function BoardPage() {
     } finally {
       setMoving(false);
     }
+  }
+
+  function submitPending(value: string) {
+    const pending = pendingMove;
+    if (!pending) {
+      return;
+    }
+    setPendingMove(undefined);
+    void performMove(
+      pending.article,
+      pending.target,
+      pending.required === 'url' ? { externalUrl: value } : { comment: value },
+    );
   }
 
   function dropInto(target: ArticleStatus) {
@@ -267,6 +305,14 @@ export function BoardPage() {
             />
           ))}
         </div>
+      ) : null}
+
+      {pendingMove !== undefined ? (
+        <TransitionDialog
+          required={pendingMove.required}
+          onSubmit={submitPending}
+          onCancel={() => setPendingMove(undefined)}
+        />
       ) : null}
     </div>
   );
