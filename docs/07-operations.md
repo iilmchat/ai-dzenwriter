@@ -73,6 +73,7 @@ DzenWriter запускается как один стек Docker Compose на �
 | 21  | Срок хранения и доступ к логам с IP-адресами определены                            | Tech lead | Да        | Готово: решение юриста оформлено 25.10.2026, замечаний нет                                     |
 | 22  | CI зелёный на коммите релиза, образы собраны и помечены версией                    | Tech lead | Да        | Открыто                                                                                        |
 | 23  | Предыдущий образ доступен для отката                                               | Tech lead | Да        | Открыто                                                                                        |
+| 24  | Guard mock (fail-fast) в production                                                | Tech lead | Да        | Готово: реализовано в env.ts (P0-4)                                                            |
 
 ### 2.3. Приёмка запуска
 
@@ -269,7 +270,7 @@ pnpm --filter @dzenwriter/api membership:recheck
 docker compose exec -T api node dist/scripts/membership-recheck.js
 ```
 
-Внимание (P0-4): скрипт `membership-recheck.ts` должен быть перенесён из `apps/api/scripts` в `src/scripts` и попадать в `dist`, иначе `node dist/scripts/membership-recheck.js` не работает. Токен `GITHUB_ORG_TOKEN` должен быть добавлен в `docker-compose.yml` (сервис `api`).
+Скрипт лежит в `apps/api/src/scripts` и попадает в `dist/scripts/membership-recheck.js`; `GITHUB_ORG_TOKEN` передаётся в сервис `api` через `docker-compose.yml`.
 
 Рекомендуемое расписание — ежедневно в 04:00 по Москве:
 

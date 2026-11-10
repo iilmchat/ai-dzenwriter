@@ -48,11 +48,25 @@ const envSchema = z.object({
 
 export type Env = z.infer<typeof envSchema>;
 
+// Заглушка в production создаёт фиктивный текст, который можно принять за настоящий.
+// Проверка общая для старта API и config:validate.
+export function assertProductionLlmProvider(
+  nodeEnv: string | undefined,
+  llmProvider: string | undefined,
+): void {
+  if ((nodeEnv || 'development') === 'production' && (llmProvider || 'mock') === 'mock') {
+    throw new ConfigError(
+      'В production нельзя использовать LLM_PROVIDER=mock: заглушка создаст фиктивный текст. Укажите реального провайдера.',
+    );
+  }
+}
+
 export function parseEnv(source: Record<string, string | undefined>): Env {
   const result = envSchema.safeParse(source);
   if (!result.success) {
     const lines = describeIssues(result.error.issues).map((line) => `  - ${line}`);
     throw new ConfigError(['Ошибка переменных окружения:', ...lines].join('\n'));
   }
+  assertProductionLlmProvider(result.data.NODE_ENV, result.data.LLM_PROVIDER);
   return result.data;
 }

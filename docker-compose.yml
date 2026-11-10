@@ -50,6 +50,7 @@ services:
       GITHUB_CLIENT_ID: ${GITHUB_CLIENT_ID:-}
       GITHUB_CLIENT_SECRET: ${GITHUB_CLIENT_SECRET:-}
       GITHUB_ORG: ${GITHUB_ORG:-iilmchat}
+      GITHUB_ORG_TOKEN: ${GITHUB_ORG_TOKEN:-}
       ADMIN_GITHUB_LOGINS: ${ADMIN_GITHUB_LOGINS:-}
       LLM_PROVIDER: ${LLM_PROVIDER:-mock}
       LLM_BASE_URL: ${LLM_BASE_URL:-}
@@ -72,7 +73,7 @@ services:
           'CMD',
           'node',
           '-e',
-          "fetch('http://127.0.0.1:4000/health').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
+          "fetch('http://127.0.0.1:4000/ready').then((r) => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))",
         ]
       interval: 10s
       timeout: 5s

@@ -34,4 +34,26 @@ describe('parseEnv', () => {
   it('проверяет диапазон API_PORT', () => {
     expect(() => parseEnv({ DATABASE_URL: 'postgres://x', API_PORT: '99999' })).toThrow(/API_PORT/);
   });
+
+  it('запрещает mock-провайдера в production', () => {
+    expect(() =>
+      parseEnv({
+        DATABASE_URL: 'postgres://x',
+        NODE_ENV: 'production',
+        LLM_PROVIDER: 'mock',
+      }),
+    ).toThrow(/В production нельзя использовать LLM_PROVIDER=mock/);
+    expect(() => parseEnv({ DATABASE_URL: 'postgres://x', NODE_ENV: 'production' })).toThrow(
+      /LLM_PROVIDER=mock/,
+    );
+  });
+
+  it('разрешает mock-провайдера вне production', () => {
+    const env = parseEnv({
+      DATABASE_URL: 'postgres://x',
+      NODE_ENV: 'development',
+      LLM_PROVIDER: 'mock',
+    });
+    expect(env.LLM_PROVIDER).toBe('mock');
+  });
 });

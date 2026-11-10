@@ -4,14 +4,14 @@
 // Не участник → отключение: сессии отозваны, в журнале user.membership_lost.
 import { and, eq, gt, inArray, isNull } from 'drizzle-orm';
 import { auditLog, createDatabase, sessions, users } from '@dzenwriter/db';
-import { parseEnv } from '../src/config/env';
+import { parseEnv } from '../config/env';
 import {
   recheckMembership,
   type MembershipClient,
   type MembershipStore,
   type MembershipTarget,
   type MembershipVerdict,
-} from '../src/users/membership-recheck';
+} from '../users/membership-recheck';
 
 const env = parseEnv(process.env as Record<string, string>);
 
