@@ -47,12 +47,36 @@ export interface GenerationRunRecord {
   readonly versionNumber: number | null;
 }
 
+// Снимок локальной правки: сам текст в базу не пишется, только размеры и инструкция.
+export interface FragmentGenerationSnapshot {
+  readonly kind: 'fragment';
+  readonly instruction: string;
+  readonly selectedChars: number;
+  readonly contextBeforeChars: number;
+  readonly contextAfterChars: number;
+  readonly factIds: readonly string[];
+  readonly factLabels: readonly string[];
+  readonly promptSha256: string;
+}
+
+// Снимок генерации вариантов заголовка: бриф заменяется флагом наличия.
+export interface TitlesGenerationSnapshot {
+  readonly kind: 'title_options';
+  readonly topic: string;
+  readonly currentTitle: string;
+  readonly hasBrief: boolean;
+  readonly promptSha256: string;
+}
+
+export type GenerationSnapshot =
+  GenerationInputSnapshot | FragmentGenerationSnapshot | TitlesGenerationSnapshot;
+
 export interface NewGenerationRun {
   readonly articleId: string;
   readonly provider: string;
   readonly model: string;
   readonly promptVersion: string;
-  readonly inputSnapshot: GenerationInputSnapshot;
+  readonly inputSnapshot: GenerationSnapshot;
   readonly idempotencyKey: string | null;
   readonly createdBy: string;
 }

@@ -1,6 +1,12 @@
 import { describe, expect, it } from 'vitest';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
-import { loadBasePrompt, loadExpandPrompt, resolvePromptsDir } from '../src/config/prompt-config';
+import {
+  loadBasePrompt,
+  loadExpandPrompt,
+  loadFragmentPrompt,
+  loadTitlesPrompt,
+  resolvePromptsDir,
+} from '../src/config/prompt-config';
 import {
   BRIEF_NOT_SET,
   buildExpandPrompt,
@@ -13,6 +19,8 @@ import {
 const config = loadAppConfig(resolveConfigDir());
 const basePrompt = loadBasePrompt(resolvePromptsDir());
 const expandPrompt = loadExpandPrompt(resolvePromptsDir());
+const fragmentPrompt = loadFragmentPrompt(resolvePromptsDir());
+const titlesPrompt = loadTitlesPrompt(resolvePromptsDir());
 
 describe('сборка промпта', () => {
   it('подставляет все поля шаблона', () => {
@@ -286,5 +294,73 @@ describe('промпт доведения объёма', () => {
 
   it('полный текст промпта доведения стабилен', () => {
     expect(expandPrompt.trim()).toMatchSnapshot();
+  });
+});
+
+describe('промпт локальной правки фрагмента', () => {
+  it('подставляет инструкцию, контекст и только переданные факты', () => {
+    const prompt = renderTemplate(fragmentPrompt, {
+      instruction: 'Сократить без потери смысла',
+      contextBefore: 'Начало абзаца.',
+      contextAfter: 'Конец абзаца.',
+      selectedText: 'Выделенный текст для правки.',
+      facts: renderFacts([
+        {
+          factId: '11111111-1111-4111-8111-111111111111',
+          label: 'F1',
+          type: 'news_source',
+          text: 'Одобренный факт.',
+          sourceName: 'Reuters',
+          sourceUrl: null,
+          sourcePublishedAt: null,
+        },
+      ]),
+    });
+
+    expect(prompt).not.toMatch(/\{\{\w+\}\}/);
+    expect(prompt).toContain('Сократить без потери смысла');
+    expect(prompt).toContain('Начало абзаца.');
+    expect(prompt).toContain('Конец абзаца.');
+    expect(prompt).toContain('Выделенный текст для правки.');
+    expect(prompt).toContain('F1 [источник новости]');
+    expect(prompt).toContain('Одобренный факт.');
+  });
+
+  it('без фактов прямо пишет об их отсутствии', () => {
+    const prompt = renderTemplate(fragmentPrompt, {
+      instruction: 'Улучшить',
+      contextBefore: '(нет)',
+      contextAfter: '(нет)',
+      selectedText: 'Текст.',
+      facts: renderFacts([]),
+    });
+
+    expect(prompt).toContain('(одобренных фактов нет)');
+  });
+});
+
+describe('промпт вариантов заголовка', () => {
+  it('подставляет тему, текущий заголовок и бриф', () => {
+    const prompt = renderTemplate(titlesPrompt, {
+      topic: 'Регулирование ИИ в ЕС',
+      currentTitle: 'Старый заголовок',
+      brief: '## План\n\n1. Боль читателя.',
+    });
+
+    expect(prompt).not.toMatch(/\{\{\w+\}\}/);
+    expect(prompt).toContain('Регулирование ИИ в ЕС');
+    expect(prompt).toContain('Старый заголовок');
+    expect(prompt).toContain('## План');
+    expect(prompt).toContain('"titles"');
+  });
+
+  it('без брифа подставляет общее правило', () => {
+    const prompt = renderTemplate(titlesPrompt, {
+      topic: 'Тема',
+      currentTitle: 'не задан',
+      brief: renderBrief(null),
+    });
+
+    expect(prompt).toContain(BRIEF_NOT_SET);
   });
 });

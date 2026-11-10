@@ -19,6 +19,7 @@ import {
   type CreateArticleInput,
   type CreateArticleResponse,
   type GenerationAvailability,
+  type RegenerateFragmentInput,
   type SaveVersionInput,
   type SaveVersionResponse,
   type StyleConfig,
@@ -29,13 +30,14 @@ import {
   type VersionDetail,
   type VersionOrigin,
   type VersionSummary,
+  titleOptionsResponseSchema,
 } from '@dzenwriter/shared';
 import { CATALOG_REPOSITORY, type CatalogRepository } from '../catalog/catalog.repository';
 import type { CheckClaim } from '../checks/check-context';
 import { ChecksService } from '../checks/checks.service';
 import { applyDisclaimer } from '../checks/disclaimer';
 import type { AppConfig } from '../config/app-config';
-import { APP_CONFIG, BRIEF_PROMPT } from '../config/tokens';
+import { APP_CONFIG, BRIEF_PROMPT, FRAGMENT_PROMPT, TITLES_PROMPT } from '../config/tokens';
 import { FACTS_REPOSITORY, type FactsRepository } from '../facts/facts.repository';
 import { GenerationLimitsService } from '../generation/generation-limits.service';
 import {
@@ -48,7 +50,13 @@ import {
   type LlmProvider,
   type LlmUsage,
 } from '../generation/llm-provider';
-import { type PromptFact, renderFacts, renderTemplate, sha256 } from '../generation/prompt-builder';
+import {
+  type PromptFact,
+  renderBrief,
+  renderFacts,
+  renderTemplate,
+  sha256,
+} from '../generation/prompt-builder';
 import {
   type Actor,
   describeTransition,
@@ -87,6 +95,38 @@ const VERSIONS_LISTED = 50;
 const VERSION_CONFLICT =
   'Материал изменился, пока вы его смотрели. Обновите страницу и повторите действие';
 
+// Схема ответа для вариантов заголовка: ровно три строки без пояснений модели.
+const TITLES_JSON_SCHEMA = {
+  type: 'object',
+  additionalProperties: false,
+  required: ['titles'],
+  properties: {
+    titles: {
+      type: 'array',
+      items: { type: 'string' },
+      minItems: 3,
+      maxItems: 3,
+    },
+  },
+};
+
+// Модель может завернуть текст в markdown-обёртку, несмотря на инструкцию.
+// Снимаем только внешние ``` и языковую метку первой строки.
+function stripCodeFence(value: string): string {
+  let text = value.trim();
+  if (text.startsWith('```')) {
+    text = text.slice(3);
+    const lineEnd = text.indexOf('\n');
+    if (lineEnd >= 0 && /^[A-Za-z0-9_-]*\s*$/.test(text.slice(0, lineEnd))) {
+      text = text.slice(lineEnd + 1);
+    }
+  }
+  if (text.endsWith('```')) {
+    text = text.slice(0, -3);
+  }
+  return text.trim();
+}
+
 // Поля, из которых собирается версия. Одни и те же для сохранения, отката и пробной проверки.
 interface VersionFields {
   readonly title: string;
@@ -115,6 +155,8 @@ export class ArticlesService {
     @Inject(LLM_PROVIDER) private readonly llm: LlmProvider,
     @Inject(GenerationLimitsService) private readonly limits: GenerationLimitsService,
     @Inject(BRIEF_PROMPT) private readonly briefPrompt: string,
+    @Inject(FRAGMENT_PROMPT) private readonly fragmentPrompt: string,
+    @Inject(TITLES_PROMPT) private readonly titlesPrompt: string,
   ) {}
 
   async list(query: ArticleListQuery, actorId: string): Promise<ArticleListResponse> {
@@ -450,6 +492,216 @@ export class ArticlesService {
       throw new ConflictException(VERSION_CONFLICT);
     }
     return brief;
+  }
+
+  // Локальная правка выделенного фрагмента. Версия статьи не создаётся:
+  // автор видит предпросмотр и применяет текст в редакторе сам.
+  async regenerateFragment(
+    actor: Actor,
+    articleId: string,
+    body: RegenerateFragmentInput,
+  ): Promise<string> {
+    const view = await this.requireView(articleId);
+    if (actor.id !== view.ownerId && actor.role !== 'admin') {
+      throw new ForbiddenException(
+        'Перегенерировать фрагмент может автор материала или администратор',
+      );
+    }
+    if (view.status === 'published' || view.status === 'archived') {
+      throw new ConflictException(
+        'Фрагмент перегенерируется до публикации: опубликованный или архивный материал не меняется',
+      );
+    }
+
+    await this.limits.checkLimits(actor.id);
+    const facts = await this.approvedPromptFacts(articleId);
+    const prompt = renderTemplate(this.fragmentPrompt, {
+      instruction: body.instruction,
+      contextBefore: body.contextBefore.trim().length > 0 ? body.contextBefore : '(нет)',
+      contextAfter: body.contextAfter.trim().length > 0 ? body.contextAfter : '(нет)',
+      selectedText: body.selectedText,
+      facts: renderFacts(facts),
+    });
+    const promptVersion = `fragment:sha256:${sha256(prompt).slice(0, 16)}`;
+    const now = new Date();
+    const runId = await this.runs.insertRun({
+      articleId,
+      provider: this.llm.name,
+      model: this.llm.model,
+      promptVersion,
+      inputSnapshot: {
+        kind: 'fragment',
+        instruction: body.instruction,
+        selectedChars: body.selectedText.length,
+        contextBeforeChars: body.contextBefore.length,
+        contextAfterChars: body.contextAfter.length,
+        factIds: facts.map((fact) => fact.factId),
+        factLabels: facts.map((fact) => fact.label),
+        promptSha256: sha256(prompt),
+      },
+      idempotencyKey: null,
+      createdBy: actor.id,
+    });
+
+    const startedAt = Date.now();
+    let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+    let text: string;
+    try {
+      const response = await this.llm.generate({
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0.4,
+        signal: undefined,
+      });
+      usage = response.usage;
+      text = stripCodeFence(response.content);
+      if (text.length === 0) {
+        throw new LlmProviderError('invalid_response', 'Провайдер вернул пустой фрагмент');
+      }
+    } catch (error) {
+      const errorCode = error instanceof LlmProviderError ? error.code : 'unavailable';
+      await this.runs.completeRun(
+        runId,
+        {
+          status: errorCode === 'aborted' ? 'cancelled' : 'failed',
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          latencyMs: Date.now() - startedAt,
+          costUsd: this.limits.costOf(usage),
+          errorCode,
+          questions: [],
+          finishedAt: new Date(),
+        },
+        null,
+      );
+      throw error;
+    }
+
+    await this.runs.completeRun(
+      runId,
+      {
+        status: 'succeeded',
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        latencyMs: Date.now() - startedAt,
+        costUsd: this.limits.costOf(usage),
+        errorCode: null,
+        questions: [],
+        finishedAt: now,
+      },
+      null,
+    );
+    await this.repository.withTransaction(async (tx) => {
+      await tx.insertAudit({
+        actorId: actor.id,
+        action: 'generation.fragment',
+        entityType: 'article',
+        entityId: articleId,
+        payload: {
+          runId,
+          instruction: body.instruction,
+          selectedChars: body.selectedText.length,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        },
+      });
+    });
+    return text;
+  }
+
+  // Варианты заголовка по теме и брифу. Статья не меняется: выбранный
+  // вариант автор вписывает в черновик, а версия создаётся кнопкой «Сохранить».
+  async generateTitleOptions(actor: Actor, articleId: string): Promise<string[]> {
+    const view = await this.requireView(articleId);
+    if (actor.id !== view.ownerId && actor.role !== 'admin') {
+      throw new ForbiddenException('Предложить заголовки может автор материала или администратор');
+    }
+
+    await this.limits.checkLimits(actor.id);
+    const currentTitle =
+      view.title !== null && view.title.trim().length > 0 ? view.title : 'не задан';
+    const prompt = renderTemplate(this.titlesPrompt, {
+      topic: view.topic,
+      currentTitle,
+      brief: renderBrief(view.brief),
+    });
+    const promptVersion = `titles:sha256:${sha256(prompt).slice(0, 16)}`;
+    const now = new Date();
+    const runId = await this.runs.insertRun({
+      articleId,
+      provider: this.llm.name,
+      model: this.llm.model,
+      promptVersion,
+      inputSnapshot: {
+        kind: 'title_options',
+        topic: view.topic,
+        currentTitle,
+        hasBrief: view.brief !== null && view.brief.trim().length > 0,
+        promptSha256: sha256(prompt),
+      },
+      idempotencyKey: null,
+      createdBy: actor.id,
+    });
+
+    const startedAt = Date.now();
+    let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+    let titles: string[];
+    try {
+      const response = await this.llm.generate({
+        messages: [{ role: 'user', content: prompt }],
+        jsonSchema: TITLES_JSON_SCHEMA,
+        temperature: 0.7,
+        signal: undefined,
+      });
+      usage = response.usage;
+      titles = parseTitles(response.content);
+    } catch (error) {
+      const errorCode = error instanceof LlmProviderError ? error.code : 'unavailable';
+      await this.runs.completeRun(
+        runId,
+        {
+          status: errorCode === 'aborted' ? 'cancelled' : 'failed',
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+          latencyMs: Date.now() - startedAt,
+          costUsd: this.limits.costOf(usage),
+          errorCode,
+          questions: [],
+          finishedAt: new Date(),
+        },
+        null,
+      );
+      throw error;
+    }
+
+    await this.runs.completeRun(
+      runId,
+      {
+        status: 'succeeded',
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
+        latencyMs: Date.now() - startedAt,
+        costUsd: this.limits.costOf(usage),
+        errorCode: null,
+        questions: [],
+        finishedAt: now,
+      },
+      null,
+    );
+    await this.repository.withTransaction(async (tx) => {
+      await tx.insertAudit({
+        actorId: actor.id,
+        action: 'generation.title_options',
+        entityType: 'article',
+        entityId: articleId,
+        payload: {
+          runId,
+          count: titles.length,
+          inputTokens: usage.inputTokens,
+          outputTokens: usage.outputTokens,
+        },
+      });
+    });
+    return titles;
   }
 
   async transition(
@@ -1035,6 +1287,22 @@ export class ArticlesService {
     }
   }
 
+  // В промпт локальных правок идут только одобренные факты: как и при генерации.
+  private async approvedPromptFacts(articleId: string): Promise<PromptFact[]> {
+    const linked = await this.repository.listLinkedFacts(articleId);
+    return linked
+      .filter((fact) => fact.status === 'approved')
+      .map((fact) => ({
+        factId: fact.factId,
+        label: fact.label,
+        type: fact.type,
+        text: fact.text,
+        sourceName: fact.sourceName,
+        sourceUrl: fact.sourceUrl,
+        sourcePublishedAt: fact.sourcePublishedAt,
+      }));
+  }
+
   private async requireView(id: string): Promise<ArticleView> {
     const view = await this.repository.findArticle(id);
     if (!view) {
@@ -1099,6 +1367,27 @@ function rubricRating(rubric: TransitionInput['rubric']): number | null {
   }
   const sum = rubric.accuracy + rubric.style + rubric.readability + rubric.hooks + rubric.cliches;
   return Math.round(sum / 5);
+}
+
+// Разбор JSON от модели: обёртка из ``` не должна ломать ответ.
+function parseTitles(content: string): string[] {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(stripCodeFence(content));
+  } catch {
+    throw new LlmProviderError('invalid_response', 'Провайдер вернул не JSON с заголовками');
+  }
+  const result = titleOptionsResponseSchema.safeParse(parsed);
+  if (!result.success) {
+    throw new LlmProviderError('invalid_response', 'Провайдер вернул заголовки не по схеме');
+  }
+  const titles = result.data.titles
+    .map((title) => title.trim())
+    .filter((title) => title.length > 0);
+  if (titles.length === 0) {
+    throw new LlmProviderError('invalid_response', 'Провайдер вернул пустые заголовки');
+  }
+  return titles;
 }
 
 function changedFields(input: UpdateArticleInput): string[] {

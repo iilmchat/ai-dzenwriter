@@ -262,6 +262,32 @@ export type CreateArticleResponse = z.infer<typeof createArticleResponseSchema>;
 export const generateBriefResponseSchema = z.object({ brief: z.string() });
 export type GenerateBriefResponse = z.infer<typeof generateBriefResponseSchema>;
 
+// Тело POST /api/v1/articles/{id}/generations/fragment: выделенный текст и его окружение.
+// Границы фрагмента задаёт редактор, поэтому контекст передаётся явно.
+export const regenerateFragmentSchema = z.object({
+  selectedText: z
+    .string()
+    .trim()
+    .min(1, 'Выделите фрагмент текста')
+    .max(LENGTH_LIMIT, `Фрагмент длиннее ${LENGTH_LIMIT} знаков`),
+  contextBefore: z.string().max(LENGTH_LIMIT, `Контекст длиннее ${LENGTH_LIMIT} знаков`),
+  contextAfter: z.string().max(LENGTH_LIMIT, `Контекст длиннее ${LENGTH_LIMIT} знаков`),
+  instruction: z
+    .string()
+    .trim()
+    .min(1, 'Опишите, как изменить фрагмент')
+    .max(2000, 'Инструкция длиннее 2000 знаков'),
+});
+export type RegenerateFragmentInput = z.infer<typeof regenerateFragmentSchema>;
+
+// Ответ перегенерации: только новый текст фрагмента, без пояснений модели.
+export const regenerateFragmentResponseSchema = z.object({ text: z.string() });
+export type RegenerateFragmentResponse = z.infer<typeof regenerateFragmentResponseSchema>;
+
+// Ответ POST /api/v1/articles/{id}/generations/titles: три варианта заголовка.
+export const titleOptionsResponseSchema = z.object({ titles: z.array(z.string()) });
+export type TitleOptionsResponse = z.infer<typeof titleOptionsResponseSchema>;
+
 // Каталог стилей и форматов только для чтения: они лежат в config/ и меняются через PR.
 export const styleCardSchema = z.object({
   id: z.string(),

@@ -97,6 +97,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   'generation.cancelled': 'Генерация отменена',
   'generation.failed': 'Сбой генерации',
   'generation.needs_input': 'Генерация ждёт ответа',
+  'generation.fragment': 'Перегенерация фрагмента',
+  'generation.title_options': 'Варианты заголовка',
   'metric.create': 'Ручной ввод метрик',
   'metric.import': 'Импорт метрик',
 };

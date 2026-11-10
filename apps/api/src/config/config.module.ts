@@ -7,6 +7,8 @@ import {
   loadBasePrompt,
   loadBriefPrompt,
   loadExpandPrompt,
+  loadFragmentPrompt,
+  loadTitlesPrompt,
   resolvePromptsDir,
 } from './prompt-config';
 import {
@@ -16,7 +18,9 @@ import {
   BRIEF_PROMPT,
   ENV,
   EXPAND_PROMPT,
+  FRAGMENT_PROMPT,
   LLM_CONFIG,
+  TITLES_PROMPT,
 } from './tokens';
 
 // Конфигурация читается при старте: если окружение, config/ или prompts/ неверны,
@@ -55,7 +59,27 @@ import {
       inject: [ENV],
       useFactory: (env: Env): string => loadBriefPrompt(resolvePromptsDir(env.PROMPTS_DIR)),
     },
+    {
+      provide: FRAGMENT_PROMPT,
+      inject: [ENV],
+      useFactory: (env: Env): string => loadFragmentPrompt(resolvePromptsDir(env.PROMPTS_DIR)),
+    },
+    {
+      provide: TITLES_PROMPT,
+      inject: [ENV],
+      useFactory: (env: Env): string => loadTitlesPrompt(resolvePromptsDir(env.PROMPTS_DIR)),
+    },
   ],
-  exports: [ENV, APP_CONFIG, AUTH_CONFIG, LLM_CONFIG, BASE_PROMPT, EXPAND_PROMPT, BRIEF_PROMPT],
+  exports: [
+    ENV,
+    APP_CONFIG,
+    AUTH_CONFIG,
+    LLM_CONFIG,
+    BASE_PROMPT,
+    EXPAND_PROMPT,
+    BRIEF_PROMPT,
+    FRAGMENT_PROMPT,
+    TITLES_PROMPT,
+  ],
 })
 export class ConfigModule {}

@@ -72,6 +72,8 @@ export const AUDIT_ACTIONS = [
   'generation.cancelled',
   'generation.failed',
   'generation.needs_input',
+  'generation.fragment',
+  'generation.title_options',
   'metric.create',
   'metric.import',
 ] as const;

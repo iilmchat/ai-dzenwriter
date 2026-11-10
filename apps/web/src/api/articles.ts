@@ -8,6 +8,11 @@ import {
   type CreateArticleResponse,
   type GenerateBriefResponse,
   generateBriefResponseSchema,
+  type RegenerateFragmentInput,
+  type RegenerateFragmentResponse,
+  regenerateFragmentResponseSchema,
+  type TitleOptionsResponse,
+  titleOptionsResponseSchema,
   type TransitionInput,
   type UpdateArticleInput,
 } from '@dzenwriter/shared';
@@ -70,6 +75,26 @@ export function generateBrief(articleId: string): Promise<GenerateBriefResponse>
   return apiRequest(`/api/v1/articles/${articleId}/brief`, {
     method: 'POST',
     schema: generateBriefResponseSchema,
+  });
+}
+
+// Локальная правка выделенного фрагмента: версия статьи не создаётся.
+export function regenerateFragment(
+  articleId: string,
+  body: RegenerateFragmentInput,
+): Promise<RegenerateFragmentResponse> {
+  return apiRequest(`/api/v1/articles/${articleId}/generations/fragment`, {
+    method: 'POST',
+    body,
+    schema: regenerateFragmentResponseSchema,
+  });
+}
+
+// Варианты заголовка по теме, текущему заголовку и брифу.
+export function generateTitleOptions(articleId: string): Promise<TitleOptionsResponse> {
+  return apiRequest(`/api/v1/articles/${articleId}/generations/titles`, {
+    method: 'POST',
+    schema: titleOptionsResponseSchema,
   });
 }
 

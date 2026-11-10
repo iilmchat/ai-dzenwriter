@@ -2,7 +2,6 @@ import { randomUUID } from 'node:crypto';
 import type { GenerationStatus } from '@dzenwriter/shared';
 import type { AuditRecord } from '../../src/audit/audit.record';
 import type {
-  GenerationInputSnapshot,
   GenerationRepository,
   GenerationRunRecord,
   NewGenerationRun,
@@ -10,9 +9,7 @@ import type {
   RunCompletion,
 } from '../../src/generation/generation.repository';
 
-interface StoredRun extends GenerationRunRecord {
-  readonly inputSnapshot: GenerationInputSnapshot;
-}
+type StoredRun = GenerationRunRecord;
 
 // Репозиторий запусков в памяти: та же семантика, что у DrizzleGenerationRepository.
 export class InMemoryGenerationRepository implements GenerationRepository {

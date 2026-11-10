@@ -26,13 +26,23 @@ export interface MarkdownEditorProps {
   readonly onSave?: (() => void) | undefined;
   readonly onGenerate?: (() => void) | undefined;
   readonly onCommandPalette?: (() => void) | undefined;
+  // Выделенный текст и окружение для локальной перегенерации фрагмента.
+  readonly onRegenerateFragment?:
+    ((selectedText: string, contextBefore: string, contextAfter: string) => void) | undefined;
+  // Текущее выделение: по нему панель включает кнопку перегенерации.
+  readonly onSelectionChange?: ((range: EditorRange | null) => void) | undefined;
   readonly placeholder?: string;
 }
 
 export interface MarkdownEditorHandle {
   // Перевести курсор к фрагменту и подсветить его: так работает переход по проверке.
   focusRange: (range: EditorRange | null) => void;
+  // Заменить диапазон новым текстом: так применяется результат перегенерации.
+  replaceRange: (range: EditorRange, insert: string) => void;
 }
+
+// Сколько знаков окружения видит модель: достаточно для связок, но без целой статьи.
+const CONTEXT_CHARS = 400;
 
 // Подсветка активного фрагмента: отдельное поле состояния, а не перерисовка документа.
 const setHighlight = StateEffect.define<EditorRange | null>();
@@ -57,10 +67,40 @@ const highlightField = StateField.define<DecorationSet>({
   provide: (field) => EditorView.decorations.from(field),
 });
 
+// Выделение и его окружение: границы фрагмента берутся из состояния CodeMirror.
+function regenerateSelection(
+  instance: EditorView,
+  callback:
+    ((selectedText: string, contextBefore: string, contextAfter: string) => void) | undefined,
+): void {
+  if (!callback) {
+    return;
+  }
+  const selection = instance.state.selection.main;
+  if (selection.empty) {
+    return;
+  }
+  const doc = instance.state.doc.toString();
+  callback(
+    doc.slice(selection.from, selection.to),
+    doc.slice(Math.max(0, selection.from - CONTEXT_CHARS), selection.from),
+    doc.slice(selection.to, Math.min(doc.length, selection.to + CONTEXT_CHARS)),
+  );
+}
+
 // Редактор Markdown на CodeMirror 6: подсветка синтаксиса, история правок, горячие клавиши.
 export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
   function MarkdownEditor(
-    { value, onChange, onSave, onGenerate, onCommandPalette, placeholder },
+    {
+      value,
+      onChange,
+      onSave,
+      onGenerate,
+      onCommandPalette,
+      onRegenerateFragment,
+      onSelectionChange,
+      placeholder,
+    },
     ref,
   ) {
     const host = useRef<HTMLDivElement | null>(null);
@@ -72,10 +112,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
     const onSaveRef = useRef(onSave);
     const onGenerateRef = useRef(onGenerate);
     const onPaletteRef = useRef(onCommandPalette);
+    const onRegenerateRef = useRef(onRegenerateFragment);
+    const onSelectionRef = useRef(onSelectionChange);
     onChangeRef.current = onChange;
     onSaveRef.current = onSave;
     onGenerateRef.current = onGenerate;
     onPaletteRef.current = onCommandPalette;
+    onRegenerateRef.current = onRegenerateFragment;
+    onSelectionRef.current = onSelectionChange;
 
     useEffect(() => {
       const element = host.current;
@@ -117,6 +161,17 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
               return true;
             },
           },
+          {
+            key: 'Mod-Shift-r',
+            preventDefault: true,
+            run: (instance) => {
+              if (instance.state.selection.main.empty) {
+                return false;
+              }
+              regenerateSelection(instance, onRegenerateRef.current);
+              return true;
+            },
+          },
           ...defaultKeymap,
           ...historyKeymap,
           indentWithTab,
@@ -124,6 +179,12 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
         EditorView.updateListener.of((update) => {
           if (update.docChanged) {
             onChangeRef.current(update.state.doc.toString());
+          }
+          if (update.selectionSet || update.docChanged) {
+            const selection = update.state.selection.main;
+            onSelectionRef.current?.(
+              selection.empty ? null : { from: selection.from, to: selection.to },
+            );
           }
         }),
         EditorState.readOnly.of(false),
@@ -178,6 +239,17 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
             selection: { anchor: from, head: to },
             scrollIntoView: true,
           });
+          instance.focus();
+        },
+        replaceRange(range, insert) {
+          const instance = view.current;
+          if (!instance) {
+            return;
+          }
+          const length = instance.state.doc.length;
+          const from = Math.min(Math.max(range.from, 0), length);
+          const to = Math.min(Math.max(range.to, from), length);
+          instance.dispatch({ changes: { from, to, insert } });
           instance.focus();
         },
       }),

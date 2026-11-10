@@ -5,6 +5,8 @@ import { ConfigError } from './errors';
 const BASE_PROMPT_FILE = 'dzen_writer.md';
 const EXPAND_PROMPT_FILE = 'dzen_expand.md';
 const BRIEF_PROMPT_FILE = 'dzen_brief.md';
+const FRAGMENT_PROMPT_FILE = 'dzen_fragment.md';
+const TITLES_PROMPT_FILE = 'dzen_titles.md';
 
 // Ищет каталог prompts/ вверх от указанной папки: так же, как ищется config/.
 export function resolvePromptsDir(explicitDir?: string, startDir: string = __dirname): string {
@@ -54,6 +56,16 @@ export function loadExpandPrompt(promptsDir: string): string {
 // Промпт брифа настраивается так же, как базовый: обязательный файл в git.
 export function loadBriefPrompt(promptsDir: string): string {
   return loadPromptFile(promptsDir, BRIEF_PROMPT_FILE);
+}
+
+// Локальная правка фрагмента: текст, окружение и инструкция редактора.
+export function loadFragmentPrompt(promptsDir: string): string {
+  return loadPromptFile(promptsDir, FRAGMENT_PROMPT_FILE);
+}
+
+// Варианты заголовка: тема, текущий заголовок и бриф.
+export function loadTitlesPrompt(promptsDir: string): string {
+  return loadPromptFile(promptsDir, TITLES_PROMPT_FILE);
 }
 
 function loadPromptFile(promptsDir: string, name: string): string {

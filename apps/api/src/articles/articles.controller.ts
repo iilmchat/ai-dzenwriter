@@ -29,11 +29,15 @@ import {
   type CreateArticleResponse,
   createArticleInputSchema,
   type GenerateBriefResponse,
+  type RegenerateFragmentInput,
+  type RegenerateFragmentResponse,
+  regenerateFragmentSchema,
   saveVersionInputSchema,
   type SaveVersionInput,
   type SaveVersionResponse,
   type TransitionInput,
   transitionInputSchema,
+  type TitleOptionsResponse,
   type UpdateArticleInput,
   updateArticleInputSchema,
   type VersionDetail,
@@ -91,6 +95,27 @@ export class ArticlesController {
     @AuthUser() actor: SessionUser,
   ): Promise<GenerateBriefResponse> {
     return { brief: await this.articles.generateBrief(actor, id, new Date()) };
+  }
+
+  // Локальная правка выделенного фрагмента: версия статьи не создаётся.
+  @Post(':id/generations/fragment')
+  @HttpCode(HttpStatus.OK)
+  async regenerateFragment(
+    @Param('id', articleIdPipe()) id: string,
+    @Body(new ZodValidationPipe(regenerateFragmentSchema)) body: RegenerateFragmentInput,
+    @AuthUser() actor: SessionUser,
+  ): Promise<RegenerateFragmentResponse> {
+    return { text: await this.articles.regenerateFragment(actor, id, body) };
+  }
+
+  // Варианты заголовка: возвращаются в ответе, черновик меняет автор.
+  @Post(':id/generations/titles')
+  @HttpCode(HttpStatus.OK)
+  async generateTitleOptions(
+    @Param('id', articleIdPipe()) id: string,
+    @AuthUser() actor: SessionUser,
+  ): Promise<TitleOptionsResponse> {
+    return { titles: await this.articles.generateTitleOptions(actor, id) };
   }
 
   @Post(':id/transitions')

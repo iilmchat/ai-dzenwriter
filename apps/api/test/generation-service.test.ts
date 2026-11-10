@@ -16,6 +16,8 @@ import {
   loadBasePrompt,
   loadBriefPrompt,
   loadExpandPrompt,
+  loadFragmentPrompt,
+  loadTitlesPrompt,
   resolvePromptsDir,
 } from '../src/config/prompt-config';
 import { GenerationLimitsService } from '../src/generation/generation-limits.service';
@@ -30,6 +32,8 @@ const config = loadAppConfig(resolveConfigDir(path.resolve(process.cwd(), '../..
 const basePrompt = loadBasePrompt(resolvePromptsDir());
 const expandPrompt = loadExpandPrompt(resolvePromptsDir());
 const briefPrompt = loadBriefPrompt(resolvePromptsDir());
+const fragmentPrompt = loadFragmentPrompt(resolvePromptsDir());
+const titlesPrompt = loadTitlesPrompt(resolvePromptsDir());
 
 const LLM: LlmConfig = {
   provider: 'mock',
@@ -62,6 +66,8 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
     provider,
     limits,
     briefPrompt,
+    fragmentPrompt,
+    titlesPrompt,
   );
   const service = new GenerationService(
     runs,

@@ -5,3 +5,5 @@ export const LLM_CONFIG = Symbol('LLM_CONFIG');
 export const BASE_PROMPT = Symbol('BASE_PROMPT');
 export const EXPAND_PROMPT = Symbol('EXPAND_PROMPT');
 export const BRIEF_PROMPT = Symbol('BRIEF_PROMPT');
+export const FRAGMENT_PROMPT = Symbol('FRAGMENT_PROMPT');
+export const TITLES_PROMPT = Symbol('TITLES_PROMPT');

@@ -10,7 +10,7 @@ import {
 } from '@dzenwriter/shared';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { fetchArticle, transitionArticle } from '../api/articles';
+import { fetchArticle, generateTitleOptions, transitionArticle } from '../api/articles';
 import { ApiError, errorMessage } from '../api/client';
 import { startGeneration } from '../api/generation';
 import {
@@ -24,7 +24,8 @@ import { ClaimsEditor, type ClaimDraft, EditorMetadata } from '../features/edito
 import { CommandPalette, type Command } from '../features/editor/CommandPalette';
 import { ConflictDialog } from '../features/editor/ConflictDialog';
 import { EditorChecksPanel } from '../features/editor/EditorChecksPanel';
-import type { MarkdownEditorHandle } from '../features/editor/MarkdownEditor';
+import { FragmentRegenerateDialog } from '../features/editor/FragmentRegenerateDialog';
+import type { EditorRange, MarkdownEditorHandle } from '../features/editor/MarkdownEditor';
 import { VersionHistory } from '../features/editor/VersionHistory';
 import { formatDateTime } from '../lib/format';
 import { useSession } from '../session/SessionContext';
@@ -52,6 +53,15 @@ const MarkdownEditor = lazy(() =>
 );
 
 const CHECK_DEBOUNCE_MS = 900;
+// Окружение фрагмента для промпта: то же, что видит редактор при выделении.
+const FRAGMENT_CONTEXT_CHARS = 400;
+
+interface FragmentTarget {
+  readonly range: EditorRange;
+  readonly selectedText: string;
+  readonly contextBefore: string;
+  readonly contextAfter: string;
+}
 
 interface Draft {
   readonly title: string;
@@ -154,6 +164,11 @@ export function EditorPage() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [historyOpen, setHistoryOpen] = useState(false);
   const [expectedVersion, setExpectedVersion] = useState(1);
+  const [selection, setSelection] = useState<EditorRange | null>(null);
+  const [fragmentTarget, setFragmentTarget] = useState<FragmentTarget | null>(null);
+  const [titleOptions, setTitleOptions] = useState<string[] | null>(null);
+  const [titlesLoading, setTitlesLoading] = useState(false);
+  const selectionRef = useRef<EditorRange | null>(null);
   const editor = useRef<MarkdownEditorHandle | null>(null);
 
   const load = useCallback(
@@ -444,7 +459,69 @@ export function EditorPage() {
     }
   }
 
+  function trackSelection(range: EditorRange | null) {
+    selectionRef.current = range;
+    setSelection(range);
+  }
+
+  // Выделение уже пришло из CodeMirror: диапазон берём из последнего состояния.
+  function openFragmentDialog(selectedText: string, contextBefore: string, contextAfter: string) {
+    const range = selectionRef.current;
+    if (range === null || selectedText.length === 0) {
+      setError('Сначала выделите фрагмент текста в редакторе.');
+      return;
+    }
+    setError(undefined);
+    setFragmentTarget({ range, selectedText, contextBefore, contextAfter });
+  }
+
+  function openSelectedFragment() {
+    const range = selectionRef.current;
+    if (range === null || range.from === range.to) {
+      setError('Сначала выделите фрагмент текста в редакторе.');
+      return;
+    }
+    const markdown = draft.articleMarkdown;
+    openFragmentDialog(
+      markdown.slice(range.from, range.to),
+      markdown.slice(Math.max(0, range.from - FRAGMENT_CONTEXT_CHARS), range.from),
+      markdown.slice(range.to, Math.min(markdown.length, range.to + FRAGMENT_CONTEXT_CHARS)),
+    );
+  }
+
+  // Применение результата: заменяем диапазон в CodeMirror, проверки перезапустит
+  // обычный эффект по изменению черновика. Версия создаётся только «Сохранить».
+  function applyFragment(text: string) {
+    if (fragmentTarget === null) {
+      return;
+    }
+    editor.current?.replaceRange(fragmentTarget.range, text);
+    setFragmentTarget(null);
+    setSelection(null);
+    selectionRef.current = null;
+    setNotice('Фрагмент обновлён в черновике. Сохраните версию, чтобы зафиксировать правку.');
+  }
+
+  async function suggestTitles() {
+    setTitlesLoading(true);
+    setError(undefined);
+    try {
+      const response = await generateTitleOptions(id);
+      setTitleOptions(response.titles);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setTitlesLoading(false);
+    }
+  }
+
   const commands: Command[] = [
+    {
+      id: 'fragment',
+      title: 'Перегенерировать фрагмент',
+      hint: 'Ctrl+Shift+R',
+      run: () => openSelectedFragment(),
+    },
     { id: 'save', title: 'Сохранить версию', hint: 'Ctrl+S', run: () => void save() },
     {
       id: 'generate',
@@ -514,14 +591,58 @@ export function EditorPage() {
           <h2 className="font-display text-lg font-bold">Исходник</h2>
           <div className={LABEL_CLASS}>
             <label htmlFor="article-title">Заголовок</label>
-            <input
-              id="article-title"
-              className={INPUT_CLASS}
-              value={draft.title}
-              maxLength={300}
-              disabled={!canEdit}
-              onChange={(event) => setDraft({ ...draft, title: event.target.value })}
-            />
+            <div className="flex gap-2">
+              <input
+                id="article-title"
+                className={INPUT_CLASS}
+                value={draft.title}
+                maxLength={300}
+                disabled={!canEdit}
+                onChange={(event) => setDraft({ ...draft, title: event.target.value })}
+              />
+              <button
+                type="button"
+                className={`${BUTTON_SECONDARY} shrink-0 px-4 py-2 text-sm`}
+                disabled={!canEdit || titlesLoading}
+                onClick={() => void suggestTitles()}
+              >
+                {titlesLoading ? 'Подбираем…' : 'Варианты'}
+              </button>
+            </div>
+            {titleOptions !== null && titleOptions.length > 0 ? (
+              <ul
+                className="mt-1 flex flex-col gap-1 rounded-lg border border-outline-variant bg-surface p-2"
+                aria-label="Варианты заголовка"
+              >
+                {titleOptions.map((title) => (
+                  <li key={title}>
+                    <button
+                      type="button"
+                      className="w-full rounded-lg px-3 py-2 text-left text-sm hover:bg-secondary-container"
+                      onClick={() => {
+                        setDraft({ ...draft, title });
+                        setTitleOptions(null);
+                      }}
+                    >
+                      {title}
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+          </div>
+          <div className="mt-3 flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              className={`${BUTTON_SECONDARY} px-4 py-2 text-sm`}
+              disabled={!canEdit || selection === null}
+              onClick={openSelectedFragment}
+            >
+              Перегенерировать фрагмент
+            </button>
+            <span className="text-xs text-on-surface-variant">
+              Выделите текст или нажмите Ctrl+Shift+R
+            </span>
           </div>
           <div className="mt-3 min-h-[420px]">
             <Suspense fallback={<div>Загрузка...</div>}>
@@ -533,6 +654,8 @@ export function EditorPage() {
                 onSave={() => void save()}
                 onGenerate={() => void generate()}
                 onCommandPalette={() => setPaletteOpen(true)}
+                onRegenerateFragment={openFragmentDialog}
+                onSelectionChange={trackSelection}
               />
             </Suspense>
           </div>
@@ -642,6 +765,17 @@ export function EditorPage() {
           showDiff={conflict.showDiff}
           onCompare={() => setConflict({ ...conflict, showDiff: !conflict.showDiff })}
           onReload={reloadLatest}
+        />
+      ) : null}
+
+      {fragmentTarget !== null ? (
+        <FragmentRegenerateDialog
+          articleId={article.id}
+          selectedText={fragmentTarget.selectedText}
+          contextBefore={fragmentTarget.contextBefore}
+          contextAfter={fragmentTarget.contextAfter}
+          onApply={applyFragment}
+          onClose={() => setFragmentTarget(null)}
         />
       ) : null}
 

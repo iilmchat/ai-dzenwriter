@@ -13,7 +13,12 @@ import { ArticlesService } from '../src/articles/articles.service';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
 import { ChecksService } from '../src/checks/checks.service';
 import type { LlmConfig } from '../src/config/llm-config';
-import { loadBriefPrompt, resolvePromptsDir } from '../src/config/prompt-config';
+import {
+  loadBriefPrompt,
+  loadFragmentPrompt,
+  loadTitlesPrompt,
+  resolvePromptsDir,
+} from '../src/config/prompt-config';
 import { GenerationLimitsService } from '../src/generation/generation-limits.service';
 import { MockLlmProvider } from '../src/generation/mock-provider';
 import { InMemoryArticlesRepository } from './support/in-memory-articles.repository';
@@ -23,6 +28,8 @@ import { InMemoryGenerationRepository } from './support/in-memory-generation.rep
 
 const config = loadAppConfig(resolveConfigDir(path.resolve(process.cwd(), '../../config')));
 const briefPrompt = loadBriefPrompt(resolvePromptsDir());
+const fragmentPrompt = loadFragmentPrompt(resolvePromptsDir());
+const titlesPrompt = loadTitlesPrompt(resolvePromptsDir());
 const LLM: LlmConfig = {
   provider: 'mock',
   baseUrl: undefined,
@@ -60,6 +67,8 @@ function setup(provider = new MockLlmProvider(), llm: LlmConfig = LLM) {
     provider,
     limits,
     briefPrompt,
+    fragmentPrompt,
+    titlesPrompt,
   );
   const addPerson = (login: string) => {
     const person = repo.addPerson(login);
@@ -175,6 +184,158 @@ describe('бриф статьи', () => {
       harness.service.generateBrief(harness.actors.owner, article.id, NOW),
     ).rejects.toBeInstanceOf(HttpException);
     expect(harness.runs.runs.size).toBe(1);
+  });
+});
+
+describe('перегенерация фрагмента', () => {
+  const FRAGMENT = {
+    selectedText: 'Короткий фрагмент.',
+    contextBefore: 'Абзац до.',
+    contextAfter: 'Абзац после.',
+    instruction: 'Добавить деталей',
+  };
+
+  it('возвращает очищенный текст, пишет запуск и аудит без новой версии', async () => {
+    const provider = new MockLlmProvider({
+      steps: [{ kind: 'content', content: '```markdown\nНовый фрагмент с деталями.\n```' }],
+    });
+    const harness = setup(provider);
+    const article = await createArticle(harness);
+    const fact = harness.facts.addFact({
+      type: 'news_source',
+      text: 'Одобренный факт для фрагмента.',
+      sourceName: 'Reuters',
+      sourceUrl: null,
+      sourcePublishedAt: null,
+      status: 'approved',
+      createdById: harness.actors.owner.id,
+    });
+    const draft = harness.facts.addFact({
+      type: 'company_fact',
+      text: 'Черновой факт не попадает в промпт.',
+      status: 'draft',
+      createdById: harness.actors.owner.id,
+    });
+    await harness.repo.attachFact(article.id, fact.id, harness.actors.owner.id);
+    await harness.repo.attachFact(article.id, draft.id, harness.actors.owner.id);
+
+    const text = await harness.service.regenerateFragment(
+      harness.actors.owner,
+      article.id,
+      FRAGMENT,
+    );
+
+    expect(text).toBe('Новый фрагмент с деталями.');
+    expect(harness.repo.versions.get(article.id) ?? []).toHaveLength(0);
+    expect(harness.runs.runs.size).toBe(1);
+    expect(harness.runs.statusOf([...harness.runs.runs.keys()][0] as string)).toBe('succeeded');
+    expect(harness.repo.audit.at(-1)).toMatchObject({ action: 'generation.fragment' });
+    const prompt = provider.requests[0]?.messages[0]?.content ?? '';
+    expect(prompt).toContain('Короткий фрагмент.');
+    expect(prompt).toContain('Абзац до.');
+    expect(prompt).toContain('Добавить деталей');
+    expect(prompt).toContain('Одобренный факт для фрагмента.');
+    expect(prompt).not.toContain('Черновой факт не попадает в промпт.');
+    expect(provider.requests[0]?.jsonSchema).toBeUndefined();
+  });
+
+  it('отказывает при исчерпанном дневном лимите', async () => {
+    const provider = new MockLlmProvider({
+      steps: [{ kind: 'content', content: 'Первый результат.' }],
+    });
+    const harness = setup(provider, { ...LLM, dailyLimitPerUser: 1 });
+    const article = await createArticle(harness);
+
+    await harness.service.regenerateFragment(harness.actors.owner, article.id, FRAGMENT);
+
+    await expect(
+      harness.service.regenerateFragment(harness.actors.owner, article.id, FRAGMENT),
+    ).rejects.toBeInstanceOf(HttpException);
+    expect(harness.runs.runs.size).toBe(1);
+  });
+
+  it('запрещает правку опубликованного материала и чужому автору', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    await expect(
+      harness.service.regenerateFragment(harness.actors.stranger, article.id, FRAGMENT),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    harness.repo.setStatus(article.id, 'published');
+    await expect(
+      harness.service.regenerateFragment(harness.actors.owner, article.id, FRAGMENT),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('пустой ответ модели не сохраняется как результат', async () => {
+    const provider = new MockLlmProvider({ steps: [{ kind: 'content', content: '   ' }] });
+    const harness = setup(provider);
+    const article = await createArticle(harness);
+    const runIds = harness.runs.runs;
+
+    await expect(
+      harness.service.regenerateFragment(harness.actors.owner, article.id, FRAGMENT),
+    ).rejects.toThrow(/пустой фрагмент/);
+    expect(harness.runs.statusOf([...runIds.keys()][0] as string)).toBe('failed');
+    expect(harness.repo.audit.at(-1)?.action).not.toBe('generation.fragment');
+  });
+});
+
+describe('варианты заголовка', () => {
+  const TITLES = JSON.stringify({
+    titles: ['Заголовок раз', 'Заголовок два', 'Заголовок три'],
+  });
+
+  it('возвращает три варианта, пишет запуск и аудит', async () => {
+    const provider = new MockLlmProvider({ steps: [{ kind: 'content', content: TITLES }] });
+    const harness = setup(provider);
+    const article = await createArticle(harness);
+
+    const titles = await harness.service.generateTitleOptions(harness.actors.owner, article.id);
+
+    expect(titles).toEqual(['Заголовок раз', 'Заголовок два', 'Заголовок три']);
+    expect(harness.runs.runs.size).toBe(1);
+    expect(harness.runs.statusOf([...harness.runs.runs.keys()][0] as string)).toBe('succeeded');
+    expect(harness.repo.audit.at(-1)).toMatchObject({ action: 'generation.title_options' });
+    const request = provider.requests[0];
+    expect(request?.jsonSchema).toBeDefined();
+    expect(request?.messages[0]?.content).toContain(NEWS.topic);
+    expect(request?.messages[0]?.content).toContain('Бриф не задан');
+  });
+
+  it('понимает JSON в markdown-обёртке и передаёт бриф', async () => {
+    const provider = new MockLlmProvider({
+      steps: [{ kind: 'content', content: `\`\`\`json\n${TITLES}\n\`\`\`` }],
+    });
+    const harness = setup(provider);
+    const article = await createArticle(harness);
+    await harness.service.update(
+      harness.actors.owner,
+      article.id,
+      { expectedVersion: article.version, brief: '## План\n\n1. Боль читателя.' },
+      NOW,
+    );
+
+    const titles = await harness.service.generateTitleOptions(harness.actors.owner, article.id);
+
+    expect(titles).toHaveLength(3);
+    expect(provider.requests[0]?.messages[0]?.content).toContain('## План');
+  });
+
+  it('проверяет права и дневной лимит', async () => {
+    const provider = new MockLlmProvider({ steps: [{ kind: 'content', content: TITLES }] });
+    const harness = setup(provider, { ...LLM, dailyLimitPerUser: 1 });
+    const article = await createArticle(harness);
+
+    await expect(
+      harness.service.generateTitleOptions(harness.actors.stranger, article.id),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    await harness.service.generateTitleOptions(harness.actors.owner, article.id);
+    await expect(
+      harness.service.generateTitleOptions(harness.actors.owner, article.id),
+    ).rejects.toBeInstanceOf(HttpException);
   });
 });
 
