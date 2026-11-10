@@ -5,10 +5,13 @@ import {
   type PilotMetricsResponse,
   type ReviewRubric,
 } from '@dzenwriter/shared';
+import type { AppConfig } from '../config/app-config';
+import { APP_CONFIG } from '../config/tokens';
 import {
   PILOT_REPOSITORY,
   type PilotData,
   type PilotGenerationRow,
+  type PilotGenerationStatRow,
   type PilotRepository,
   type PilotReviewRow,
 } from './pilot.repository';
@@ -33,18 +36,32 @@ function rubricAverages(
 
 @Injectable()
 export class PilotService {
-  constructor(@Inject(PILOT_REPOSITORY) private readonly repository: PilotRepository) {}
+  constructor(
+    @Inject(PILOT_REPOSITORY) private readonly repository: PilotRepository,
+    @Inject(APP_CONFIG) private readonly config: AppConfig,
+  ) {}
 
   async metrics(query: PilotMetricsQuery): Promise<PilotMetricsResponse> {
     const from = query.from === undefined ? undefined : new Date(`${query.from}T00:00:00+03:00`);
     const to = query.to === undefined ? undefined : new Date(`${query.to}T23:59:59.999+03:00`);
-    const data = await this.repository.load({ from, to });
-    return buildPilotMetrics(data, query);
+    const [data, generationStats] = await Promise.all([
+      this.repository.load({ from, to }),
+      this.repository.getGenerationStats({ from, to }),
+    ]);
+    const styleNames = new Map(
+      [...this.config.styles.values()].map((style) => [style.id, style.name]),
+    );
+    return buildPilotMetrics(data, query, generationStats, styleNames);
   }
 }
 
 // Чистая сборка отчёта: в тестах можно подставить данные без HTTP и базы.
-export function buildPilotMetrics(data: PilotData, query: PilotMetricsQuery): PilotMetricsResponse {
+export function buildPilotMetrics(
+  data: PilotData,
+  query: PilotMetricsQuery,
+  generationStats: readonly PilotGenerationStatRow[] = [],
+  styleNames: ReadonlyMap<string, string> = new Map(),
+): PilotMetricsResponse {
   const versionsByArticle = groupBy(data.versions);
   const reviewsByArticle = groupBy(data.reviews);
   const articleIds = new Set(data.articles.map((article) => article.id));
@@ -148,6 +165,7 @@ export function buildPilotMetrics(data: PilotData, query: PilotMetricsQuery): Pi
     4,
   );
   const articlesWithRuns = new Set(runs.map((run) => run.articleId)).size;
+  const breakdown = generationBreakdown(generationStats, styleNames);
 
   return {
     period: { from: query.from ?? null, to: query.to ?? null },
@@ -179,7 +197,106 @@ export function buildPilotMetrics(data: PilotData, query: PilotMetricsQuery): Pi
       questions,
       costUsd,
       costPerArticle: articlesWithRuns === 0 ? null : round(costUsd / articlesWithRuns, 4),
+      byStyle: breakdown.byStyle,
+      byPromptVersion: breakdown.byPromptVersion,
     },
+  };
+}
+
+interface GenerationAccumulator {
+  totalRuns: number;
+  succeeded: number;
+  failed: number;
+  needsInput: number;
+  totalCostUsd: number;
+  latencyTotalMs: number;
+  latencyCount: number;
+}
+
+function emptyAccumulator(): GenerationAccumulator {
+  return {
+    totalRuns: 0,
+    succeeded: 0,
+    failed: 0,
+    needsInput: 0,
+    totalCostUsd: 0,
+    latencyTotalMs: 0,
+    latencyCount: 0,
+  };
+}
+
+// Сырые агрегаты SQL раскладываются по двум разрезам: стиль и версия промпта.
+function generationBreakdown(
+  stats: readonly PilotGenerationStatRow[],
+  styleNames: ReadonlyMap<string, string>,
+): Pick<PilotMetricsResponse['generation'], 'byStyle' | 'byPromptVersion'> {
+  const styles = new Map<string, GenerationAccumulator>();
+  const prompts = new Map<string, GenerationAccumulator>();
+
+  for (const row of stats) {
+    addRun(styles, row.styleId, row);
+    addRun(prompts, row.promptVersion, row);
+  }
+
+  return {
+    byStyle: [...styles.entries()]
+      .map(([styleId, value]) => ({
+        styleId,
+        styleName: styleNames.get(styleId) ?? styleId,
+        ...accumulated(value),
+        avgLatencyMs:
+          value.latencyCount === 0 ? null : round(value.latencyTotalMs / value.latencyCount, 1),
+      }))
+      .sort(
+        (left, right) =>
+          right.totalRuns - left.totalRuns || left.styleId.localeCompare(right.styleId),
+      ),
+    byPromptVersion: [...prompts.entries()]
+      .map(([promptVersion, value]) => ({
+        promptVersion,
+        ...accumulated(value),
+      }))
+      .sort(
+        (left, right) =>
+          right.totalRuns - left.totalRuns || left.promptVersion.localeCompare(right.promptVersion),
+      ),
+  };
+}
+
+function addRun(
+  groups: Map<string, GenerationAccumulator>,
+  key: string,
+  row: PilotGenerationStatRow,
+): void {
+  const value = groups.get(key) ?? emptyAccumulator();
+  value.totalRuns += row.runs;
+  value.totalCostUsd += row.costUsd;
+  value.latencyTotalMs += row.latencyTotalMs;
+  value.latencyCount += row.latencyCount;
+  if (row.status === 'succeeded') {
+    value.succeeded += row.runs;
+  }
+  if (row.status === 'failed') {
+    value.failed += row.runs;
+  }
+  if (row.status === 'needs_input') {
+    value.needsInput += row.runs;
+  }
+  groups.set(key, value);
+}
+
+function accumulated(
+  value: GenerationAccumulator,
+): Pick<
+  GenerationAccumulator,
+  'totalRuns' | 'succeeded' | 'failed' | 'needsInput' | 'totalCostUsd'
+> {
+  return {
+    totalRuns: value.totalRuns,
+    succeeded: value.succeeded,
+    failed: value.failed,
+    needsInput: value.needsInput,
+    totalCostUsd: round(value.totalCostUsd, 4),
   };
 }
 

@@ -7,7 +7,6 @@ import { FactsPage } from './pages/FactsPage';
 import { LoginPage } from './pages/LoginPage';
 import { MetricsPage } from './pages/MetricsPage';
 import { MyTasksPage } from './pages/MyTasksPage';
-import { PilotPage } from './pages/PilotPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { PublicationsPage } from './pages/PublicationsPage';
 import { StylesPage } from './pages/StylesPage';
@@ -20,6 +19,11 @@ import { RequireSession } from './shell/RequireSession';
 // кто работает только с доской, фактами или метриками.
 const EditorPage = lazy(() =>
   import('./pages/EditorPage').then((module) => ({ default: module.EditorPage })),
+);
+
+// Дашборд пилота тянет recharts. Ленивый чанк не увеличивает стартовый бандл.
+const AdminPilotPage = lazy(() =>
+  import('./pages/AdminPilotPage').then((module) => ({ default: module.AdminPilotPage })),
 );
 
 export function App() {
@@ -60,7 +64,15 @@ export function App() {
             path="admin/pilot"
             element={
               <RequireSession roles={['admin']}>
-                <PilotPage />
+                <Suspense
+                  fallback={
+                    <p role="status" className="p-6 text-sm text-on-surface-variant">
+                      Загрузка аналитики…
+                    </p>
+                  }
+                >
+                  <AdminPilotPage />
+                </Suspense>
               </RequireSession>
             }
           />

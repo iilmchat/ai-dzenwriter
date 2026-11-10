@@ -1,5 +1,18 @@
 import { REVIEW_RUBRIC_LABELS, type PilotMetricsResponse } from '@dzenwriter/shared';
 import { type FormEvent, useEffect, useState } from 'react';
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { errorMessage } from '../api/client';
 import { fetchPilotMetrics, type PilotFilters } from '../api/pilot';
 import { BUTTON_PRIMARY, INPUT_CLASS, LABEL_CLASS, PANEL_CLASS } from '../shared/ui/classes';
@@ -7,8 +20,9 @@ import { Notice } from '../shared/ui/Notice';
 
 const EMPTY_FILTERS: PilotFilters = { from: '', to: '' };
 
-// Показатели пилота: агрегаты по материалам и генерациям. Экран доступен администратору.
-export function PilotPage() {
+// Показатели пилота: агрегаты по материалам и генерациям. Экран доступен администратору
+// и загружается лениво: recharts не попадает в стартовый чанк приложения.
+export function AdminPilotPage() {
   const [filters, setFilters] = useState<PilotFilters>(EMPTY_FILTERS);
   const [appliedFilters, setAppliedFilters] = useState<PilotFilters>(EMPTY_FILTERS);
   const [metrics, setMetrics] = useState<PilotMetricsResponse | undefined>(undefined);
@@ -207,8 +221,174 @@ function PilotReport({ metrics }: { readonly metrics: PilotMetricsResponse }) {
           )}
         </section>
       </section>
+
+      <section aria-labelledby="pilot-styles-title" className="flex flex-col gap-4">
+        <div>
+          <h2 id="pilot-styles-title" className="font-display text-xl font-bold">
+            Статистика по стилям
+          </h2>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Запуски по статусам, стоимость и средняя задержка для каждого стиля.
+          </p>
+        </div>
+        {generation.byStyle.length === 0 ? (
+          <p className={`${PANEL_CLASS} text-sm text-on-surface-variant`}>
+            Нет данных за выбранный период
+          </p>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className={`${PANEL_CLASS} min-w-0`}>
+              <h3 className="font-display text-base font-bold">Запуски по статусам</h3>
+              <div className="mt-3 h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={[...generation.byStyle]}>
+                    <CartesianGrid stroke="var(--color-outline-variant)" strokeDasharray="3 3" />
+                    <XAxis
+                      dataKey="styleName"
+                      tick={{ fill: 'var(--color-on-surface-variant)', fontSize: 12 }}
+                    />
+                    <YAxis
+                      allowDecimals={false}
+                      tick={{ fill: 'var(--color-on-surface-variant)', fontSize: 12 }}
+                    />
+                    <Tooltip contentStyle={TOOLTIP_STYLE} />
+                    <Legend />
+                    <Bar dataKey="succeeded" name="Успешно" fill="var(--color-primary)" />
+                    <Bar dataKey="failed" name="Ошибки" fill="var(--color-error)" />
+                    <Bar dataKey="needsInput" name="Needs Input" fill="var(--color-tertiary)" />
+                  </BarChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className={`${PANEL_CLASS} min-w-0 overflow-x-auto`}>
+              <h3 className="font-display text-base font-bold">Стоимость и задержка</h3>
+              <table className="mt-3 w-full min-w-[420px] text-left text-sm">
+                <thead className="border-b border-outline-variant text-on-surface-variant">
+                  <tr>
+                    <th className="py-2 pr-3 font-medium">Стиль</th>
+                    <th className="py-2 pr-3 text-right font-medium">Запусков</th>
+                    <th className="py-2 pr-3 text-right font-medium">Стоимость</th>
+                    <th className="py-2 text-right font-medium">Средняя задержка</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {generation.byStyle.map((item) => (
+                    <tr key={item.styleId} className="border-b border-outline-variant/60">
+                      <td className="py-2 pr-3">{item.styleName}</td>
+                      <td className="py-2 pr-3 text-right">{item.totalRuns}</td>
+                      <td className="py-2 pr-3 text-right">{formatMoney(item.totalCostUsd)}</td>
+                      <td className="py-2 text-right">{formatLatency(item.avgLatencyMs)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </section>
+
+      <section aria-labelledby="pilot-prompts-title" className="flex flex-col gap-4">
+        <div>
+          <h2 id="pilot-prompts-title" className="font-display text-xl font-bold">
+            Статистика по промптам
+          </h2>
+          <p className="mt-1 text-sm text-on-surface-variant">
+            Распределение запусков по версиям промптов и итоги по каждой версии.
+          </p>
+        </div>
+        {generation.byPromptVersion.length === 0 ? (
+          <p className={`${PANEL_CLASS} text-sm text-on-surface-variant`}>
+            Нет данных за выбранный период
+          </p>
+        ) : (
+          <div className="grid gap-4 xl:grid-cols-2">
+            <div className={`${PANEL_CLASS} min-w-0`}>
+              <h3 className="font-display text-base font-bold">Распределение запусков</h3>
+              <div className="mt-3 h-72 w-full">
+                <ResponsiveContainer width="100%" height="100%">
+                  <PieChart>
+                    <Pie
+                      data={generation.byPromptVersion.map((item) => ({
+                        ...item,
+                        name: shortPromptVersion(item.promptVersion),
+                      }))}
+                      dataKey="totalRuns"
+                      nameKey="name"
+                      cx="50%"
+                      cy="50%"
+                      outerRadius={90}
+                      label
+                    >
+                      {generation.byPromptVersion.map((item, index) => (
+                        <Cell
+                          key={item.promptVersion}
+                          fill={PROMPT_COLORS[index % PROMPT_COLORS.length]}
+                        />
+                      ))}
+                    </Pie>
+                    <Tooltip contentStyle={TOOLTIP_STYLE} />
+                    <Legend />
+                  </PieChart>
+                </ResponsiveContainer>
+              </div>
+            </div>
+
+            <div className={`${PANEL_CLASS} min-w-0 overflow-x-auto`}>
+              <h3 className="font-display text-base font-bold">Итоги по версиям</h3>
+              <table className="mt-3 w-full min-w-[460px] text-left text-sm">
+                <thead className="border-b border-outline-variant text-on-surface-variant">
+                  <tr>
+                    <th className="py-2 pr-3 font-medium">Версия</th>
+                    <th className="py-2 pr-3 text-right font-medium">Запусков</th>
+                    <th className="py-2 pr-3 text-right font-medium">Успешно</th>
+                    <th className="py-2 pr-3 text-right font-medium">Ошибки</th>
+                    <th className="py-2 text-right font-medium">Стоимость</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {generation.byPromptVersion.map((item) => (
+                    <tr key={item.promptVersion} className="border-b border-outline-variant/60">
+                      <td className="py-2 pr-3 font-mono text-xs">
+                        {shortPromptVersion(item.promptVersion)}
+                      </td>
+                      <td className="py-2 pr-3 text-right">{item.totalRuns}</td>
+                      <td className="py-2 pr-3 text-right">{item.succeeded}</td>
+                      <td className="py-2 pr-3 text-right">{item.failed}</td>
+                      <td className="py-2 text-right">{formatMoney(item.totalCostUsd)}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
+}
+
+const PROMPT_COLORS = [
+  'var(--color-primary)',
+  'var(--color-tertiary)',
+  'var(--color-error)',
+  'var(--color-secondary-container)',
+  'var(--color-on-surface-variant)',
+];
+
+const TOOLTIP_STYLE = {
+  backgroundColor: 'var(--color-surface-container)',
+  border: '1px solid var(--color-outline-variant)',
+  borderRadius: '12px',
+  color: 'var(--color-on-surface)',
+};
+
+function shortPromptVersion(value: string): string {
+  return value.length > 18 ? `${value.slice(0, 18)}…` : value;
+}
+
+function formatLatency(value: number | null): string {
+  return value === null ? '—' : `${numberFormat.format(Math.round(value))} мс`;
 }
 
 function MetricCard({

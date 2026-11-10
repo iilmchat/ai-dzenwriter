@@ -107,9 +107,45 @@ function data(): PilotData {
   };
 }
 
+const STYLE_NAMES = new Map([
+  ['industry-news', 'Новости индустрии'],
+  ['personal-experience', 'Личный опыт'],
+]);
+
+// Сырые агрегаты SQL: по стилю, версии промпта и статусу.
+const GENERATION_STATS = [
+  {
+    styleId: 'industry-news',
+    promptVersion: 'sha256:aaa',
+    status: 'succeeded' as const,
+    runs: 1,
+    costUsd: 0.2,
+    latencyTotalMs: 1200,
+    latencyCount: 1,
+  },
+  {
+    styleId: 'industry-news',
+    promptVersion: 'sha256:aaa',
+    status: 'needs_input' as const,
+    runs: 1,
+    costUsd: 0.01,
+    latencyTotalMs: 800,
+    latencyCount: 1,
+  },
+  {
+    styleId: 'personal-experience',
+    promptVersion: 'sha256:bbb',
+    status: 'failed' as const,
+    runs: 2,
+    costUsd: 0.4,
+    latencyTotalMs: 4000,
+    latencyCount: 2,
+  },
+];
+
 describe('показатели пилота', () => {
   it('считает медиану, доли и оценки по данным периода', () => {
-    const report = buildPilotMetrics(data(), {});
+    const report = buildPilotMetrics(data(), {}, GENERATION_STATS, STYLE_NAMES);
 
     expect(report.articles).toMatchObject({
       total: 3,
@@ -142,6 +178,51 @@ describe('показатели пилота', () => {
     expect(report.generation.questions).toEqual([{ question: 'Нужен источник', count: 2 }]);
   });
 
+  it('агрегирует запуски по стилям и версиям промптов', () => {
+    const report = buildPilotMetrics(data(), {}, GENERATION_STATS, STYLE_NAMES);
+
+    expect(report.generation.byStyle).toEqual([
+      {
+        styleId: 'industry-news',
+        styleName: 'Новости индустрии',
+        totalRuns: 2,
+        succeeded: 1,
+        failed: 0,
+        needsInput: 1,
+        totalCostUsd: 0.21,
+        avgLatencyMs: 1000,
+      },
+      {
+        styleId: 'personal-experience',
+        styleName: 'Личный опыт',
+        totalRuns: 2,
+        succeeded: 0,
+        failed: 2,
+        needsInput: 0,
+        totalCostUsd: 0.4,
+        avgLatencyMs: 2000,
+      },
+    ]);
+    expect(report.generation.byPromptVersion).toEqual([
+      {
+        promptVersion: 'sha256:aaa',
+        totalRuns: 2,
+        succeeded: 1,
+        failed: 0,
+        needsInput: 1,
+        totalCostUsd: 0.21,
+      },
+      {
+        promptVersion: 'sha256:bbb',
+        totalRuns: 2,
+        succeeded: 0,
+        failed: 2,
+        needsInput: 0,
+        totalCostUsd: 0.4,
+      },
+    ]);
+  });
+
   it('возвращает прочерки на пустом периоде', () => {
     const report = buildPilotMetrics(
       { articles: [], versions: [], reviews: [], generationRuns: [] },
@@ -162,6 +243,8 @@ describe('показатели пилота', () => {
       runs: 0,
       costUsd: 0,
       costPerArticle: null,
+      byStyle: [],
+      byPromptVersion: [],
     });
   });
 });

@@ -51,7 +51,21 @@ export interface PilotData {
   readonly generationRuns: readonly PilotGenerationRow[];
 }
 
+// Строка агрегата generation_runs: SQL группирует по стилю, версии промпта и статусу.
+// Стоимость и задержка суммируются, количество задержек нужно для среднего.
+export interface PilotGenerationStatRow {
+  readonly styleId: string;
+  readonly promptVersion: string;
+  readonly status: GenerationStatus;
+  readonly runs: number;
+  readonly costUsd: number;
+  readonly latencyTotalMs: number;
+  readonly latencyCount: number;
+}
+
 export interface PilotRepository {
   // Читает материалы периода и связанные с ними версии, ревью и запуски генерации.
   load(period: PilotPeriod): Promise<PilotData>;
+  // Агрегаты запусков за период: по стилю, версии промпта и статусу.
+  getGenerationStats(period: PilotPeriod): Promise<PilotGenerationStatRow[]>;
 }

@@ -621,6 +621,28 @@ describe('приложение', () => {
             questions: [{ question: 'Нужен источник', count: 1 }],
             costUsd: 0.2,
             costPerArticle: 0.2,
+            byStyle: [
+              {
+                styleId: 'industry-news',
+                styleName: 'Новости индустрии',
+                totalRuns: 2,
+                succeeded: 1,
+                failed: 0,
+                needsInput: 1,
+                totalCostUsd: 0.2,
+                avgLatencyMs: 1200,
+              },
+            ],
+            byPromptVersion: [
+              {
+                promptVersion: 'sha256:abcdef1234567890',
+                totalRuns: 2,
+                succeeded: 1,
+                failed: 0,
+                needsInput: 1,
+                totalCostUsd: 0.2,
+              },
+            ],
           },
         }),
     });
@@ -630,12 +652,16 @@ describe('приложение', () => {
     expect(await screen.findByRole('heading', { name: 'Показатели пилота' })).toBeTruthy();
     expect(await screen.findByText('26,5 ч')).toBeTruthy();
     expect(screen.getByText('Нужен источник')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Статистика по стилям' })).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Статистика по промптам' })).toBeTruthy();
+    expect(screen.getByText('Новости индустрии')).toBeTruthy();
     expect(screen.getByText('5,0 / 5')).toBeTruthy();
     expect(screen.getByText('1 оценка по шкале 1–5')).toBeTruthy();
     expect(
       screen.getByText(/Рубрика редактора \(1 оценка\): точность 5,0 \/ 5 · .*· штампы 4,0 \/ 5/),
     ).toBeTruthy();
-    expect(screen.getAllByText(/0,20/)).toHaveLength(2);
+    // Две карточки стоимости и две строки новых таблиц по стилю и промпту.
+    expect(screen.getAllByText(/0,20/)).toHaveLength(4);
   });
 
   it('журнал аудита доступен администратору', async () => {

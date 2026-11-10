@@ -48,6 +48,7 @@ describe('показатели пилота по HTTP', () => {
     const articles = new InMemoryArticlesRepository(facts);
     const emptyPilot = {
       load: async () => ({ articles: [], versions: [], reviews: [], generationRuns: [] }),
+      getGenerationStats: async () => [],
     };
 
     const moduleRef = await Test.createTestingModule({ imports: [AppModule] })

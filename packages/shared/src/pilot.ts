@@ -59,6 +59,30 @@ export const pilotMetricsResponseSchema = z.object({
     ),
     costUsd: z.number().nonnegative(),
     costPerArticle: z.number().nonnegative().nullable(),
+    // Разбивка запусков по стилю материала: столбцы статусов и стоимость с задержкой.
+    byStyle: z.array(
+      z.object({
+        styleId: z.string(),
+        styleName: z.string(),
+        totalRuns: z.number().int().nonnegative(),
+        succeeded: z.number().int().nonnegative(),
+        failed: z.number().int().nonnegative(),
+        needsInput: z.number().int().nonnegative(),
+        totalCostUsd: z.number().nonnegative(),
+        avgLatencyMs: z.number().nonnegative().nullable(),
+      }),
+    ),
+    // Разбивка по версии промпта: видно, какая версия чаще даёт сбой или вопросы.
+    byPromptVersion: z.array(
+      z.object({
+        promptVersion: z.string(),
+        totalRuns: z.number().int().nonnegative(),
+        succeeded: z.number().int().nonnegative(),
+        failed: z.number().int().nonnegative(),
+        needsInput: z.number().int().nonnegative(),
+        totalCostUsd: z.number().nonnegative(),
+      }),
+    ),
   }),
 });
 export type PilotMetricsResponse = z.infer<typeof pilotMetricsResponseSchema>;

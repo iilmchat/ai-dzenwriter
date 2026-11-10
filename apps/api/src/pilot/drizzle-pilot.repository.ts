@@ -1,12 +1,13 @@
 import { articleVersions, articles, generationRuns, reviews } from '@dzenwriter/db';
 import type { GenerationStatus, ReviewDecision, VersionOrigin } from '@dzenwriter/shared';
-import { and, asc, gte, inArray, lte, type SQL } from 'drizzle-orm';
+import { and, asc, eq, gte, inArray, lte, sql, type SQL } from 'drizzle-orm';
 import type { VersionCheck } from '../articles/article-rules';
 import type { DbHandle } from '../database/db-handle';
 import {
   type PilotArticleRow,
   type PilotData,
   type PilotGenerationRow,
+  type PilotGenerationStatRow,
   type PilotPeriod,
   type PilotRepository,
   type PilotReviewRow,
@@ -117,6 +118,46 @@ export class DrizzlePilotRepository implements PilotRepository {
       reviews: reviewRowsMapped,
       generationRuns: generationRowsMapped,
     };
+  }
+
+  async getGenerationStats(period: PilotPeriod): Promise<PilotGenerationStatRow[]> {
+    const conditions: SQL[] = [];
+    if (period.from) {
+      conditions.push(gte(articles.createdAt, period.from));
+    }
+    if (period.to) {
+      conditions.push(lte(articles.createdAt, period.to));
+    }
+
+    const rows = await this.db
+      .select({
+        styleId: articles.styleId,
+        promptVersion: generationRuns.promptVersion,
+        status: generationRuns.status,
+        runs: sql<number>`count(*)::int`,
+        costUsd: sql<string>`coalesce(sum(${generationRuns.costUsd}), 0)::text`,
+        latencyTotalMs: sql<string>`coalesce(sum(${generationRuns.latencyMs}), 0)::text`,
+        latencyCount: sql<number>`count(${generationRuns.latencyMs})::int`,
+      })
+      .from(generationRuns)
+      .innerJoin(articles, eq(generationRuns.articleId, articles.id))
+      .where(conditions.length > 0 ? and(...conditions) : undefined)
+      .groupBy(articles.styleId, generationRuns.promptVersion, generationRuns.status)
+      .orderBy(
+        asc(articles.styleId),
+        asc(generationRuns.promptVersion),
+        asc(generationRuns.status),
+      );
+
+    return rows.map((row) => ({
+      styleId: row.styleId,
+      promptVersion: row.promptVersion,
+      status: row.status as GenerationStatus,
+      runs: row.runs,
+      costUsd: Number(row.costUsd),
+      latencyTotalMs: Number(row.latencyTotalMs),
+      latencyCount: row.latencyCount,
+    }));
   }
 }
 
