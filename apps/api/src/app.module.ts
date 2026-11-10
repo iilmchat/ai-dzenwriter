@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { ArticlesModule } from './articles/articles.module';
 import { AuditModule } from './audit/audit.module';
 import { AuthModule } from './auth/auth.module';
+import { CalendarModule } from './calendar/calendar.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ConfigModule } from './config/config.module';
 import { DatabaseModule } from './database/database.module';
@@ -23,6 +24,7 @@ import { UsersModule } from './users/users.module';
     DatabaseModule,
     IdentityModule,
     AuthModule,
+    CalendarModule,
     UsersModule,
     CatalogModule,
     FactsModule,

@@ -26,6 +26,9 @@ export function AppShell() {
             <NavLink to="/tasks" className={navClass}>
               Мои задачи
             </NavLink>
+            <NavLink to="/calendar" className={navClass}>
+              Календарь
+            </NavLink>
             <NavLink to="/facts" className={navClass}>
               Факт-база
             </NavLink>

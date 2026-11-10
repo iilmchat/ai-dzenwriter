@@ -30,6 +30,10 @@ const MetricsPage = lazy(() =>
   import('./pages/MetricsPage').then((module) => ({ default: module.MetricsPage })),
 );
 
+const CalendarPage = lazy(() =>
+  import('./pages/CalendarPage').then((module) => ({ default: module.CalendarPage })),
+);
+
 export function App() {
   return (
     <SessionProvider>
@@ -44,6 +48,20 @@ export function App() {
         >
           <Route index element={<BoardPage />} />
           <Route path="tasks" element={<MyTasksPage />} />
+          <Route
+            path="calendar"
+            element={
+              <Suspense
+                fallback={
+                  <p role="status" className="p-6 text-sm text-on-surface-variant">
+                    Загрузка календаря…
+                  </p>
+                }
+              >
+                <CalendarPage />
+              </Suspense>
+            }
+          />
           <Route path="articles/:id" element={<ArticlePage />} />
           <Route
             path="articles/:id/edit"
