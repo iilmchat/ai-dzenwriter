@@ -92,6 +92,8 @@ export const AUDIT_ACTION_LABELS: Record<AuditAction, string> = {
   'version.create': 'Новая версия текста',
   'version.rollback': 'Откат текста',
   'check.confirm': 'Подтверждение проверки',
+  'review.comment_create': 'Комментарий к фрагменту',
+  'review.comment_resolve': 'Комментарий решён',
   'generation.start': 'Запуск генерации',
   'generation.succeeded': 'Генерация завершена',
   'generation.cancelled': 'Генерация отменена',

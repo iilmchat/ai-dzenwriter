@@ -13,6 +13,7 @@ import { Link, useParams } from 'react-router';
 import { fetchArticle, generateTitleOptions, transitionArticle } from '../api/articles';
 import { ApiError, errorMessage } from '../api/client';
 import { startGeneration } from '../api/generation';
+import { createReviewComment } from '../api/reviews';
 import {
   checkVersion,
   fetchVersion,
@@ -26,6 +27,8 @@ import { ConflictDialog } from '../features/editor/ConflictDialog';
 import { EditorChecksPanel } from '../features/editor/EditorChecksPanel';
 import { FragmentRegenerateDialog } from '../features/editor/FragmentRegenerateDialog';
 import type { EditorRange, MarkdownEditorHandle } from '../features/editor/MarkdownEditor';
+import { ReviewCommentDialog } from '../features/editor/ReviewCommentDialog';
+import { ReviewCommentsPanel } from '../features/editor/ReviewCommentsPanel';
 import { VersionHistory } from '../features/editor/VersionHistory';
 import { formatDateTime } from '../lib/format';
 import { useSession } from '../session/SessionContext';
@@ -61,6 +64,12 @@ interface FragmentTarget {
   readonly selectedText: string;
   readonly contextBefore: string;
   readonly contextAfter: string;
+}
+
+interface CommentTarget {
+  readonly selectedText: string;
+  readonly startOffset: number;
+  readonly endOffset: number;
 }
 
 interface Draft {
@@ -168,6 +177,9 @@ export function EditorPage() {
   const [fragmentTarget, setFragmentTarget] = useState<FragmentTarget | null>(null);
   const [titleOptions, setTitleOptions] = useState<string[] | null>(null);
   const [titlesLoading, setTitlesLoading] = useState(false);
+  const [commentTarget, setCommentTarget] = useState<CommentTarget | undefined>(undefined);
+  const [commentSaving, setCommentSaving] = useState(false);
+  const [commentsRefreshKey, setCommentsRefreshKey] = useState(0);
   const selectionRef = useRef<EditorRange | null>(null);
   const editor = useRef<MarkdownEditorHandle | null>(null);
 
@@ -268,6 +280,10 @@ export function EditorPage() {
     (user.id === article.owner.id || user.role === 'admin') &&
     article.status !== 'archived' &&
     article.status !== 'published';
+  // Комментировать фрагменты может ревьюер или администратор.
+  const canComment = user !== undefined && (user.role === 'reviewer' || user.role === 'admin');
+  const canResolveComments =
+    canComment || (user !== undefined && article !== null && user.id === article.owner.id);
   const dirty = draftReady && JSON.stringify(draft) !== JSON.stringify(savedDraft);
 
   // Автосохранение локальное: версии создаёт только кнопка «Сохранить версию»,
@@ -502,6 +518,53 @@ export function EditorPage() {
     setNotice('Фрагмент обновлён в черновике. Сохраните версию, чтобы зафиксировать правку.');
   }
 
+  function setCommentTargetFrom(selectedText: string, startOffset: number, endOffset: number) {
+    if (selectedText.trim().length === 0) {
+      setError('Сначала выделите фрагмент текста в редакторе.');
+      return;
+    }
+    setError(undefined);
+    setCommentTarget({ selectedText, startOffset, endOffset });
+  }
+
+  function openSelectedComment() {
+    const range = selectionRef.current;
+    if (range === null || range.from === range.to) {
+      setError('Сначала выделите фрагмент текста в редакторе.');
+      return;
+    }
+    setCommentTargetFrom(draft.articleMarkdown.slice(range.from, range.to), range.from, range.to);
+  }
+
+  async function saveComment(comment: string) {
+    if (commentTarget === undefined || article === null) {
+      return;
+    }
+    const versionNumber = article.currentVersionNumber;
+    if (versionNumber === null) {
+      setError('Сначала сохраните версию: комментарий привязывается к сохранённому тексту.');
+      return;
+    }
+    setCommentSaving(true);
+    setError(undefined);
+    try {
+      await createReviewComment(id, versionNumber, {
+        versionNumber,
+        comment,
+        selectedText: commentTarget.selectedText,
+        startOffset: commentTarget.startOffset,
+        endOffset: commentTarget.endOffset,
+      });
+      setCommentTarget(undefined);
+      setCommentsRefreshKey((value) => value + 1);
+      setNotice(`Комментарий добавлен к версии ${versionNumber}.`);
+    } catch (cause) {
+      setError(errorMessage(cause));
+    } finally {
+      setCommentSaving(false);
+    }
+  }
+
   async function suggestTitles() {
     setTitlesLoading(true);
     setError(undefined);
@@ -521,6 +584,12 @@ export function EditorPage() {
       title: 'Перегенерировать фрагмент',
       hint: 'Ctrl+Shift+R',
       run: () => openSelectedFragment(),
+    },
+    {
+      id: 'comment',
+      title: 'Комментировать фрагмент',
+      hint: 'Ctrl+Shift+M',
+      run: () => openSelectedComment(),
     },
     { id: 'save', title: 'Сохранить версию', hint: 'Ctrl+S', run: () => void save() },
     {
@@ -640,8 +709,16 @@ export function EditorPage() {
             >
               Перегенерировать фрагмент
             </button>
+            <button
+              type="button"
+              className={`${BUTTON_SECONDARY} px-4 py-2 text-sm`}
+              disabled={!canComment || selection === null || article.currentVersionNumber === null}
+              onClick={openSelectedComment}
+            >
+              Комментировать
+            </button>
             <span className="text-xs text-on-surface-variant">
-              Выделите текст или нажмите Ctrl+Shift+R
+              Выделите текст; ревьюер может нажать Ctrl+Shift+M
             </span>
           </div>
           <div className="mt-3 min-h-[420px]">
@@ -655,6 +732,11 @@ export function EditorPage() {
                 onGenerate={() => void generate()}
                 onCommandPalette={() => setPaletteOpen(true)}
                 onRegenerateFragment={openFragmentDialog}
+                onCreateComment={(selectedText, startOffset, endOffset) => {
+                  if (canComment) {
+                    setCommentTargetFrom(selectedText, startOffset, endOffset);
+                  }
+                }}
                 onSelectionChange={trackSelection}
               />
             </Suspense>
@@ -679,6 +761,19 @@ export function EditorPage() {
           }
         />
       </div>
+
+      <ReviewCommentsPanel
+        articleId={article.id}
+        versionNumber={article.currentVersionNumber}
+        canResolve={canResolveComments}
+        refreshKey={commentsRefreshKey}
+        onFocus={(comment) =>
+          editor.current?.focusRange({
+            from: comment.startOffset,
+            to: comment.endOffset,
+          })
+        }
+      />
 
       <EditorMetadata
         seoTitle={draft.seoTitle}
@@ -776,6 +871,15 @@ export function EditorPage() {
           contextAfter={fragmentTarget.contextAfter}
           onApply={applyFragment}
           onClose={() => setFragmentTarget(null)}
+        />
+      ) : null}
+
+      {commentTarget !== undefined ? (
+        <ReviewCommentDialog
+          selectedText={commentTarget.selectedText}
+          saving={commentSaving}
+          onSubmit={(comment) => void saveComment(comment)}
+          onCancel={() => setCommentTarget(undefined)}
         />
       ) : null}
 

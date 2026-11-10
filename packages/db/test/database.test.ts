@@ -79,6 +79,7 @@ describe('схема и миграции', () => {
         'publications',
         'metric_snapshots',
         'notifications',
+        'review_comments',
         'audit_log',
       ]),
     );

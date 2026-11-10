@@ -67,6 +67,8 @@ export const AUDIT_ACTIONS = [
   'version.create',
   'version.rollback',
   'check.confirm',
+  'review.comment_create',
+  'review.comment_resolve',
   'generation.start',
   'generation.succeeded',
   'generation.cancelled',

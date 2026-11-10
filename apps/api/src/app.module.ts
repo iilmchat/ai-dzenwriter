@@ -13,6 +13,7 @@ import { MetricsModule } from './metrics/metrics.module';
 import { NotificationsModule } from './notifications/notifications.module';
 import { PilotModule } from './pilot/pilot.module';
 import { PublicationsModule } from './publications/publications.module';
+import { ReviewsModule } from './reviews/reviews.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -27,6 +28,7 @@ import { UsersModule } from './users/users.module';
     ArticlesModule,
     GenerationModule,
     PublicationsModule,
+    ReviewsModule,
     MetricsModule,
     NotificationsModule,
     PilotModule,

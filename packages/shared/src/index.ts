@@ -16,3 +16,4 @@ export * from './pilot';
 export * from './labels';
 export * from './products';
 export * from './notifications';
+export * from './reviews';

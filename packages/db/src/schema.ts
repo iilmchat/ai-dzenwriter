@@ -344,6 +344,39 @@ export const reviews = pgTable(
   ],
 );
 
+// Комментарии ревьюера к выделенному фрагменту конкретной версии.
+// Офсеты считаются по Markdown-тексту версии.
+export const reviewComments = pgTable(
+  'review_comments',
+  {
+    id: uuidId(),
+    articleId: uuid('article_id')
+      .notNull()
+      .references(() => articles.id, { onDelete: 'cascade' }),
+    versionNumber: integer('version_number').notNull(),
+    reviewerId: uuid('reviewer_id')
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    comment: text('comment').notNull(),
+    selectedText: text('selected_text').notNull(),
+    startOffset: integer('start_offset').notNull(),
+    endOffset: integer('end_offset').notNull(),
+    isResolved: boolean('is_resolved').notNull().default(false),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    check(
+      'review_comments_offsets_check',
+      sql`${table.startOffset} >= 0 AND ${table.endOffset} >= ${table.startOffset}`,
+    ),
+    index('review_comments_article_version_created_idx').on(
+      table.articleId,
+      table.versionNumber,
+      table.createdAt,
+    ),
+  ],
+);
+
 export const publications = pgTable(
   'publications',
   {

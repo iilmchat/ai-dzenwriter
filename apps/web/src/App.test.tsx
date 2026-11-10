@@ -207,6 +207,8 @@ function stubApi(overrides: Record<string, Handler> = {}, me: unknown = ADMIN) {
     'GET /api/v1/articles': () => json({ items: [ITEM], truncated: false }),
     [`GET /api/v1/articles/${ARTICLE_ID}`]: () => json(DETAIL),
     [`GET /api/v1/articles/${ARTICLE_ID}/generations`]: () => json({ items: [] }),
+    [`GET /api/v1/articles/${ARTICLE_ID}/versions/1/comments`]: () => json({ items: [] }),
+    [`GET /api/v1/articles/${ARTICLE_ID}/versions/2/comments`]: () => json({ items: [] }),
     ...overrides,
   };
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {

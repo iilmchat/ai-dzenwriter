@@ -29,6 +29,9 @@ export interface MarkdownEditorProps {
   // Выделенный текст и окружение для локальной перегенерации фрагмента.
   readonly onRegenerateFragment?:
     ((selectedText: string, contextBefore: string, contextAfter: string) => void) | undefined;
+  // Комментарий ревьюера к выделенному фрагменту: текст и его офсеты в версии.
+  readonly onCreateComment?:
+    ((selectedText: string, startOffset: number, endOffset: number) => void) | undefined;
   // Текущее выделение: по нему панель включает кнопку перегенерации.
   readonly onSelectionChange?: ((range: EditorRange | null) => void) | undefined;
   readonly placeholder?: string;
@@ -88,6 +91,24 @@ function regenerateSelection(
   );
 }
 
+function commentSelection(
+  instance: EditorView,
+  callback: ((selectedText: string, startOffset: number, endOffset: number) => void) | undefined,
+): void {
+  if (!callback) {
+    return;
+  }
+  const selection = instance.state.selection.main;
+  if (selection.empty) {
+    return;
+  }
+  callback(
+    instance.state.doc.sliceString(selection.from, selection.to),
+    selection.from,
+    selection.to,
+  );
+}
+
 // Редактор Markdown на CodeMirror 6: подсветка синтаксиса, история правок, горячие клавиши.
 export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorProps>(
   function MarkdownEditor(
@@ -98,6 +119,7 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
       onGenerate,
       onCommandPalette,
       onRegenerateFragment,
+      onCreateComment,
       onSelectionChange,
       placeholder,
     },
@@ -113,12 +135,14 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
     const onGenerateRef = useRef(onGenerate);
     const onPaletteRef = useRef(onCommandPalette);
     const onRegenerateRef = useRef(onRegenerateFragment);
+    const onCreateCommentRef = useRef(onCreateComment);
     const onSelectionRef = useRef(onSelectionChange);
     onChangeRef.current = onChange;
     onSaveRef.current = onSave;
     onGenerateRef.current = onGenerate;
     onPaletteRef.current = onCommandPalette;
     onRegenerateRef.current = onRegenerateFragment;
+    onCreateCommentRef.current = onCreateComment;
     onSelectionRef.current = onSelectionChange;
 
     useEffect(() => {
@@ -169,6 +193,17 @@ export const MarkdownEditor = forwardRef<MarkdownEditorHandle, MarkdownEditorPro
                 return false;
               }
               regenerateSelection(instance, onRegenerateRef.current);
+              return true;
+            },
+          },
+          {
+            key: 'Mod-Shift-m',
+            preventDefault: true,
+            run: (instance) => {
+              if (instance.state.selection.main.empty) {
+                return false;
+              }
+              commentSelection(instance, onCreateCommentRef.current);
               return true;
             },
           },
