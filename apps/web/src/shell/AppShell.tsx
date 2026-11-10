@@ -4,6 +4,7 @@ import logoIcon from '../../../../design/brand/logo-icon.svg?url';
 import { NotificationsPanel } from '../features/notifications/NotificationsPanel';
 import { useSession } from '../session/SessionContext';
 import { BUTTON_SECONDARY, FOCUS_RING } from '../shared/ui/classes';
+import { GlobalSearch } from '../shared/ui/GlobalSearch';
 import { ServiceStatus } from './ServiceStatus';
 
 export function AppShell() {
@@ -56,6 +57,7 @@ export function AppShell() {
           </nav>
           {user ? (
             <div className="ml-auto flex items-center gap-3 text-sm">
+              <GlobalSearch />
               <NotificationsPanel />
               <span>
                 {user.name ?? user.login} · {USER_ROLE_LABELS[user.role]}

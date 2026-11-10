@@ -14,6 +14,7 @@ import { NotificationsModule } from './notifications/notifications.module';
 import { PilotModule } from './pilot/pilot.module';
 import { PublicationsModule } from './publications/publications.module';
 import { ReviewsModule } from './reviews/reviews.module';
+import { SearchModule } from './search/search.module';
 import { UsersModule } from './users/users.module';
 
 @Module({
@@ -29,6 +30,7 @@ import { UsersModule } from './users/users.module';
     GenerationModule,
     PublicationsModule,
     ReviewsModule,
+    SearchModule,
     MetricsModule,
     NotificationsModule,
     PilotModule,
