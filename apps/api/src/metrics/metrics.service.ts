@@ -24,6 +24,13 @@ interface Actor {
   readonly role: string;
 }
 
+export interface MetricListFilters {
+  readonly articleId?: string | undefined;
+  readonly from?: string | undefined;
+  readonly to?: string | undefined;
+  readonly publicationIds?: readonly string[] | undefined;
+}
+
 // Метрики публикаций: ручной ввод и импорт CSV.
 @Injectable()
 export class MetricsService {
@@ -32,13 +39,19 @@ export class MetricsService {
     @Inject(ARTICLES_REPOSITORY) private readonly articles: ArticlesRepository,
   ) {}
 
-  async list(actor: Actor, filter: { articleId?: string }): Promise<MetricListResponse> {
+  async list(actor: Actor, filter: MetricListFilters): Promise<MetricListResponse> {
     void actor;
-    const rows = await this.repository.listSnapshots({
-      articleId: filter.articleId,
-      limit: SNAPSHOTS_LIMIT,
-    });
-    return { items: rows.map(toSnapshot) };
+    const [rows, available] = await Promise.all([
+      this.repository.listSnapshots({
+        articleId: filter.articleId,
+        articleIds: filter.publicationIds,
+        from: filter.from,
+        to: filter.to,
+        limit: SNAPSHOTS_LIMIT,
+      }),
+      this.repository.listAvailablePublications(),
+    ]);
+    return { items: rows.map(toSnapshot), availablePublications: available };
   }
 
   // Ручной ввод: цифры из панели Дзена на дату.

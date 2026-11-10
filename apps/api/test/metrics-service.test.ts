@@ -46,6 +46,11 @@ async function publishedArticle(harness: Harness): Promise<string> {
     articleId,
     externalUrl: 'https://dzen.ru/a/demo',
   });
+  harness.metrics.addAvailablePublication({
+    id: articleId,
+    title: 'Кейс про ИИ',
+    externalUrl: 'https://dzen.ru/a/demo',
+  });
   return articleId;
 }
 
@@ -295,7 +300,7 @@ describe('предупреждения ручного ввода', () => {
 });
 
 describe('список метрик', () => {
-  it('отдаёт снимки по материалу', async () => {
+  it('отдаёт снимки по материалу и доступные публикации', async () => {
     const harness = setup();
     const articleId = await publishedArticle(harness);
     await harness.service.create(harness.actors.owner, {
@@ -309,5 +314,42 @@ describe('список метрик', () => {
 
     expect(response.items).toHaveLength(1);
     expect(response.items[0]?.views).toBe(10);
+    expect(response.availablePublications).toEqual([
+      { id: articleId, title: 'Кейс про ИИ', externalUrl: 'https://dzen.ru/a/demo' },
+    ]);
+  });
+
+  it('фильтрует по датам и выбранным публикациям', async () => {
+    const harness = setup();
+    const articleId = await publishedArticle(harness);
+    for (const [capturedOn, views] of [
+      ['2026-10-01', 10],
+      ['2026-11-01', 20],
+      ['2026-11-05', 30],
+    ] as const) {
+      await harness.service.create(harness.actors.owner, {
+        articleId,
+        capturedOn,
+        views,
+        reads: 1,
+      });
+    }
+
+    const response = await harness.service.list(harness.actors.owner, {
+      from: '2026-11-01',
+      to: '2026-11-02',
+      publicationIds: [articleId],
+    });
+
+    expect(response.items).toHaveLength(1);
+    expect(response.items[0]?.capturedOn).toBe('2026-11-01');
+    expect(response.items[0]?.views).toBe(20);
+
+    const other = await harness.service.list(harness.actors.owner, {
+      from: '2026-10-01',
+      to: '2026-11-30',
+      publicationIds: ['00000000-0000-4000-8000-0000000000ff'],
+    });
+    expect(other.items).toEqual([]);
   });
 });

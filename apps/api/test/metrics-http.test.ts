@@ -107,6 +107,11 @@ describe('метрики по HTTP', () => {
       articleId,
       externalUrl: 'https://dzen.ru/a/demo',
     });
+    metrics.addAvailablePublication({
+      id: articleId,
+      title: 'Кейс про ИИ',
+      externalUrl: 'https://dzen.ru/a/demo',
+    });
   });
 
   afterAll(async () => {
@@ -170,6 +175,24 @@ describe('метрики по HTTP', () => {
     const body = response.body as { items: { views: number }[] };
     expect(body.items.length).toBeGreaterThan(0);
     expect(body.items[0]?.views).toBe(1200);
+  });
+
+  it('список фильтруется по датам и выбранным публикациям', async () => {
+    const response = await call(
+      'GET',
+      `/metrics?from=2026-11-01&to=2026-11-01&publicationIds=${articleId}`,
+      'author',
+    );
+
+    expect(response.status).toBe(200);
+    const body = response.body as {
+      items: { capturedOn: string }[];
+      availablePublications: { id: string }[];
+    };
+    expect(body.items.every((item) => item.capturedOn === '2026-11-01')).toBe(true);
+    expect(body.availablePublications).toEqual([
+      expect.objectContaining({ id: articleId, title: 'Кейс про ИИ' }),
+    ]);
   });
 
   it('чужой пользователь получает 403', async () => {

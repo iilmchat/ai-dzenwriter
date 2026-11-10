@@ -5,7 +5,6 @@ import { AuditPage } from './pages/AuditPage';
 import { BoardPage } from './pages/BoardPage';
 import { FactsPage } from './pages/FactsPage';
 import { LoginPage } from './pages/LoginPage';
-import { MetricsPage } from './pages/MetricsPage';
 import { MyTasksPage } from './pages/MyTasksPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { PublicationsPage } from './pages/PublicationsPage';
@@ -24,6 +23,11 @@ const EditorPage = lazy(() =>
 // Дашборд пилота тянет recharts. Ленивый чанк не увеличивает стартовый бандл.
 const AdminPilotPage = lazy(() =>
   import('./pages/AdminPilotPage').then((module) => ({ default: module.AdminPilotPage })),
+);
+
+// Метрики тоже используют recharts: отдельный чанк, как у дашборда пилота.
+const MetricsPage = lazy(() =>
+  import('./pages/MetricsPage').then((module) => ({ default: module.MetricsPage })),
 );
 
 export function App() {
@@ -58,7 +62,20 @@ export function App() {
           <Route path="facts" element={<FactsPage />} />
           <Route path="products" element={<ProductsPage />} />
           <Route path="publications" element={<PublicationsPage />} />
-          <Route path="metrics" element={<MetricsPage />} />
+          <Route
+            path="metrics"
+            element={
+              <Suspense
+                fallback={
+                  <p role="status" className="p-6 text-sm text-on-surface-variant">
+                    Загрузка метрик…
+                  </p>
+                }
+              >
+                <MetricsPage />
+              </Suspense>
+            }
+          />
           <Route path="styles" element={<StylesPage />} />
           <Route
             path="admin/pilot"

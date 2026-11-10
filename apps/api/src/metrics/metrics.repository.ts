@@ -25,9 +25,18 @@ export interface PublicationRef {
 
 export interface MetricFilter {
   readonly articleId?: string | undefined;
+  // Выбранные в интерфейсе публикации. В снимках это статья публикации.
+  readonly articleIds?: readonly string[] | undefined;
   readonly from?: string | undefined;
   readonly to?: string | undefined;
   readonly limit: number;
+}
+
+// Публикация для выбора на графике: id — идентификатор материала публикации.
+export interface AvailablePublicationRow {
+  readonly id: string;
+  readonly title: string;
+  readonly externalUrl: string | null;
 }
 
 export interface NewMetricSnapshot {
@@ -42,6 +51,8 @@ export interface NewMetricSnapshot {
 
 export interface MetricsRepository {
   listSnapshots(filter: MetricFilter): Promise<MetricRow[]>;
+  // Публикации для мультиселекта на графике.
+  listAvailablePublications(): Promise<AvailablePublicationRow[]>;
   // Снимок на дату один: повторный ввод обновляет прежний, а не плодит строки.
   upsertSnapshot(snapshot: NewMetricSnapshot): Promise<{ id: string; created: boolean }>;
   // Последний снимок публикации строго до указанной даты: с ним сверяется прирост.

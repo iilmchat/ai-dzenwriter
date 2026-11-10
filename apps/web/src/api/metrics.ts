@@ -9,9 +9,27 @@ import {
 } from '@dzenwriter/shared';
 import { apiRequest } from './client';
 
-export function fetchMetrics(articleId?: string): Promise<MetricListResponse> {
-  const query = articleId === undefined ? '' : `?articleId=${encodeURIComponent(articleId)}`;
-  return apiRequest(`/api/v1/metrics${query}`, {
+export interface MetricsFilters {
+  readonly from?: string;
+  readonly to?: string;
+  readonly publicationIds?: readonly string[];
+}
+
+export type MetricsResponse = MetricListResponse;
+
+export function fetchMetrics(filters: MetricsFilters = {}): Promise<MetricsResponse> {
+  const params = new URLSearchParams();
+  if (filters.from) {
+    params.set('from', filters.from);
+  }
+  if (filters.to) {
+    params.set('to', filters.to);
+  }
+  if (filters.publicationIds !== undefined && filters.publicationIds.length > 0) {
+    params.set('publicationIds', filters.publicationIds.join(','));
+  }
+  const query = params.toString();
+  return apiRequest(`/api/v1/metrics${query ? `?${query}` : ''}`, {
     schema: metricListResponseSchema,
   });
 }

@@ -18,8 +18,17 @@ export const metricSnapshotSchema = z.object({
 });
 export type MetricSnapshot = z.infer<typeof metricSnapshotSchema>;
 
+// Публикация для мультиселекта на графике. id — материал опубликованной статьи.
+export const availablePublicationSchema = z.object({
+  id: z.uuid(),
+  title: z.string(),
+  externalUrl: z.string().nullable(),
+});
+export type AvailablePublication = z.infer<typeof availablePublicationSchema>;
+
 export const metricListResponseSchema = z.object({
   items: z.array(metricSnapshotSchema),
+  availablePublications: z.array(availablePublicationSchema),
 });
 export type MetricListResponse = z.infer<typeof metricListResponseSchema>;
 

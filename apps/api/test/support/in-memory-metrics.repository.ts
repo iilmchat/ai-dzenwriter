@@ -1,6 +1,7 @@
 import { randomUUID } from 'node:crypto';
 import type { AuditRecord } from '../../src/metrics/metrics.repository';
 import type {
+  AvailablePublicationRow,
   MetricFilter,
   MetricRow,
   MetricsRepository,
@@ -12,6 +13,7 @@ import type {
 export class InMemoryMetricsRepository implements MetricsRepository {
   readonly snapshots: MetricRow[] = [];
   readonly publications: PublicationRef[] = [];
+  readonly available: AvailablePublicationRow[] = [];
   readonly audit: AuditRecord[] = [];
   readonly clock = new Date();
 
@@ -19,13 +21,27 @@ export class InMemoryMetricsRepository implements MetricsRepository {
     this.publications.push(publication);
   }
 
+  addAvailablePublication(publication: AvailablePublicationRow): void {
+    this.available.push(publication);
+  }
+
   async listSnapshots(filter: MetricFilter): Promise<MetricRow[]> {
     return this.snapshots
       .filter((row) => filter.articleId === undefined || row.articleId === filter.articleId)
+      .filter(
+        (row) =>
+          filter.articleIds === undefined ||
+          filter.articleIds.length === 0 ||
+          filter.articleIds.includes(row.articleId),
+      )
       .filter((row) => filter.from === undefined || row.capturedOn >= filter.from)
       .filter((row) => filter.to === undefined || row.capturedOn <= filter.to)
       .sort((left, right) => right.capturedOn.localeCompare(left.capturedOn))
       .slice(0, filter.limit);
+  }
+
+  async listAvailablePublications(): Promise<AvailablePublicationRow[]> {
+    return [...this.available].sort((left, right) => left.title.localeCompare(right.title));
   }
 
   async upsertSnapshot(snapshot: NewMetricSnapshot): Promise<{ id: string; created: boolean }> {

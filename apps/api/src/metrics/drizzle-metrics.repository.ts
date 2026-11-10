@@ -1,10 +1,11 @@
 import { articles, metricSnapshots, publications, users } from '@dzenwriter/db';
 import type { MetricSource } from '@dzenwriter/shared';
-import { and, desc, eq, gte, lt, lte, sql, type SQL } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lt, lte, sql, type SQL } from 'drizzle-orm';
 import { writeAuditRecord } from '../audit/audit.record';
 import type { DbHandle } from '../database/db-handle';
 import type {
   AuditRecord,
+  AvailablePublicationRow,
   MetricFilter,
   MetricRow,
   MetricsRepository,
@@ -20,6 +21,9 @@ export class DrizzleMetricsRepository implements MetricsRepository {
     if (filter.articleId !== undefined) {
       conditions.push(eq(articles.id, filter.articleId));
     }
+    if (filter.articleIds !== undefined && filter.articleIds.length > 0) {
+      conditions.push(inArray(articles.id, [...filter.articleIds]));
+    }
     if (filter.from !== undefined) {
       conditions.push(gte(metricSnapshots.capturedOn, filter.from));
     }
@@ -27,6 +31,19 @@ export class DrizzleMetricsRepository implements MetricsRepository {
       conditions.push(lte(metricSnapshots.capturedOn, filter.to));
     }
     return this.selectRows(conditions.length > 0 ? and(...conditions) : undefined, filter.limit);
+  }
+
+  async listAvailablePublications(): Promise<AvailablePublicationRow[]> {
+    return this.db
+      .select({
+        id: publications.articleId,
+        title: articles.topic,
+        externalUrl: publications.externalUrl,
+      })
+      .from(publications)
+      .innerJoin(articles, eq(articles.id, publications.articleId))
+      .where(eq(publications.status, 'published'))
+      .orderBy(asc(articles.topic));
   }
 
   async findSnapshotBefore(

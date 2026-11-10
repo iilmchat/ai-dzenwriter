@@ -1048,6 +1048,13 @@ describe('приложение', () => {
               createdBy: 'anna',
             },
           ],
+          availablePublications: [
+            {
+              id: ARTICLE_ID,
+              title: 'Агенты на длинных задачах',
+              externalUrl: 'https://dzen.ru/a/demo',
+            },
+          ],
         }),
       'GET /api/v1/publications': () =>
         json({

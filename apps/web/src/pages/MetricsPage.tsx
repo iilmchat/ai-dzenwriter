@@ -1,7 +1,17 @@
-import type { MetricSnapshot, PublicationItem } from '@dzenwriter/shared';
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import type { AvailablePublication, MetricSnapshot, PublicationItem } from '@dzenwriter/shared';
+import { type FormEvent, useEffect, useMemo, useRef, useState } from 'react';
+import {
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from 'recharts';
 import { errorMessage } from '../api/client';
-import { createMetric, fetchMetrics, importMetrics } from '../api/metrics';
+import { createMetric, fetchMetrics, importMetrics, type MetricsFilters } from '../api/metrics';
 import { fetchPublications } from '../api/publications';
 import { formatDate } from '../lib/format';
 import {
@@ -13,37 +23,137 @@ import {
 } from '../shared/ui/classes';
 import { Notice } from '../shared/ui/Notice';
 
-// Метрики публикаций: ручной ввод, импорт CSV и сравнение материалов.
+const DAY_MS = 24 * 60 * 60 * 1000;
+type MetricKind = 'views' | 'reads';
+
+const METRIC_LABELS: Record<MetricKind, string> = {
+  views: 'Просмотры',
+  reads: 'Прочтения',
+};
+
+const CHART_COLORS = [
+  'var(--color-primary)',
+  'var(--color-tertiary)',
+  'var(--color-error)',
+  'var(--color-secondary-container)',
+  'var(--color-on-surface-variant)',
+];
+
+const TOOLTIP_STYLE = {
+  backgroundColor: 'var(--color-surface-container)',
+  border: '1px solid var(--color-outline-variant)',
+  borderRadius: '12px',
+  color: 'var(--color-on-surface)',
+};
+
+function isoDaysAgo(days: number): string {
+  return new Date(Date.now() - days * DAY_MS).toISOString().slice(0, 10);
+}
+
+function defaultFilters(): MetricsFilters {
+  return {
+    from: isoDaysAgo(29),
+    to: isoDaysAgo(0),
+    publicationIds: [],
+  };
+}
+
+// Предыдущий такой же интервал: для пунктирных линий сравнения.
+function previousPeriod(filters: MetricsFilters): MetricsFilters | null {
+  if (!filters.from || !filters.to) {
+    return null;
+  }
+  const from = Date.parse(`${filters.from}T00:00:00Z`);
+  const to = Date.parse(`${filters.to}T00:00:00Z`);
+  if (!Number.isFinite(from) || !Number.isFinite(to) || to < from) {
+    return null;
+  }
+  const days = Math.round((to - from) / DAY_MS) + 1;
+  const previousTo = new Date(from - DAY_MS);
+  const previousFrom = new Date(previousTo.getTime() - (days - 1) * DAY_MS);
+  return {
+    from: previousFrom.toISOString().slice(0, 10),
+    to: previousTo.toISOString().slice(0, 10),
+    publicationIds: filters.publicationIds,
+  };
+}
+
+// Метрики публикаций: графики по дням, сравнение периодов, ручной ввод и импорт CSV.
 export function MetricsPage() {
+  const [filters, setFilters] = useState<MetricsFilters>(() => defaultFilters());
+  const [applied, setApplied] = useState<MetricsFilters>(() => defaultFilters());
   const [snapshots, setSnapshots] = useState<MetricSnapshot[]>([]);
+  const [previousSnapshots, setPreviousSnapshots] = useState<MetricSnapshot[]>([]);
+  const [available, setAvailable] = useState<AvailablePublication[]>([]);
   const [publications, setPublications] = useState<PublicationItem[]>([]);
+  const [metric, setMetric] = useState<MetricKind>('views');
+  const [compare, setCompare] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | undefined>(undefined);
+  const [reloadKey, setReloadKey] = useState(0);
+  const loadedOnce = useRef(false);
 
-  const load = useCallback((silent = false) => {
-    // Перед первым прогоном показываем загрузку; повторные — тихие,
-    // чтобы не стирать форму и итог импорта на время обновления данных.
-    if (!silent) {
+  useEffect(() => {
+    let active = true;
+    // Повторная загрузка после ввода метрик тихая: формы не исчезают на время запроса.
+    if (!loadedOnce.current) {
       setLoading(true);
     }
-    Promise.all([fetchMetrics(), fetchPublications()]).then(
-      ([metrics, published]) => {
+    setError(undefined);
+    const previous = compare ? previousPeriod(applied) : null;
+    Promise.all([
+      fetchMetrics(applied),
+      previous === null ? Promise.resolve(null) : fetchMetrics(previous),
+      fetchPublications(),
+    ]).then(
+      ([metrics, previousMetrics, published]) => {
+        if (!active) {
+          return;
+        }
         setSnapshots(metrics.items);
+        setAvailable(metrics.availablePublications);
+        setPreviousSnapshots(previousMetrics?.items ?? []);
         setPublications(published.items);
+        loadedOnce.current = true;
         setLoading(false);
       },
       (cause: unknown) => {
-        setError(errorMessage(cause));
-        setLoading(false);
+        if (active) {
+          setError(errorMessage(cause));
+          setLoading(false);
+        }
       },
     );
-  }, []);
+    return () => {
+      active = false;
+    };
+  }, [applied, compare, reloadKey]);
 
-  useEffect(() => {
-    load();
-  }, [load]);
-
+  const chart = useMemo(
+    () => buildChart(snapshots, previousSnapshots, available, applied.publicationIds ?? [], metric),
+    [snapshots, previousSnapshots, available, applied.publicationIds, metric],
+  );
   const comparison = useMemo(() => compareByArticle(snapshots), [snapshots]);
+
+  function apply(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setApplied({
+      ...filters,
+      publicationIds: [...(filters.publicationIds ?? [])],
+    });
+  }
+
+  function togglePublication(id: string) {
+    setFilters((current) => {
+      const selected = current.publicationIds ?? [];
+      return {
+        ...current,
+        publicationIds: selected.includes(id)
+          ? selected.filter((item) => item !== id)
+          : [...selected, id],
+      };
+    });
+  }
 
   return (
     <div className="flex flex-col gap-6">
@@ -61,15 +171,295 @@ export function MetricsPage() {
         <Notice>Загружаем метрики…</Notice>
       ) : (
         <>
+          <section aria-labelledby="metrics-filters-title" className={PANEL_CLASS}>
+            <h2 id="metrics-filters-title" className="font-display text-lg font-bold">
+              Фильтры
+            </h2>
+            <form className="mt-4 flex flex-col gap-4" onSubmit={apply}>
+              <div className="flex flex-wrap items-end gap-4">
+                <label className={LABEL_CLASS}>
+                  С даты
+                  <input
+                    type="date"
+                    className={INPUT_CLASS}
+                    value={filters.from ?? ''}
+                    onChange={(event) => setFilters({ ...filters, from: event.target.value })}
+                  />
+                </label>
+                <label className={LABEL_CLASS}>
+                  По дату
+                  <input
+                    type="date"
+                    className={INPUT_CLASS}
+                    value={filters.to ?? ''}
+                    onChange={(event) => setFilters({ ...filters, to: event.target.value })}
+                  />
+                </label>
+                <label className={LABEL_CLASS}>
+                  Показатель
+                  <select
+                    className={INPUT_CLASS}
+                    value={metric}
+                    onChange={(event) => setMetric(event.target.value as MetricKind)}
+                  >
+                    <option value="views">Просмотры</option>
+                    <option value="reads">Прочтения</option>
+                  </select>
+                </label>
+                <button type="submit" className={BUTTON_PRIMARY}>
+                  Показать
+                </button>
+                <button
+                  type="button"
+                  className={BUTTON_SECONDARY}
+                  aria-pressed={compare}
+                  onClick={() => setCompare((value) => !value)}
+                >
+                  Сравнить с предыдущим периодом
+                </button>
+              </div>
+
+              <fieldset className="flex flex-col gap-2">
+                <legend className="text-sm font-medium">Публикации</legend>
+                {available.length === 0 ? (
+                  <p className="text-sm text-on-surface-variant">Опубликованных материалов нет.</p>
+                ) : (
+                  <div className="flex max-h-40 flex-wrap gap-x-4 gap-y-2 overflow-auto">
+                    {available.map((item) => (
+                      <label key={item.id} className="flex items-center gap-2 text-sm">
+                        <input
+                          type="checkbox"
+                          checked={(filters.publicationIds ?? []).includes(item.id)}
+                          onChange={() => togglePublication(item.id)}
+                        />
+                        {item.title}
+                      </label>
+                    ))}
+                  </div>
+                )}
+              </fieldset>
+            </form>
+          </section>
+
+          <MetricsChart data={chart.data} series={chart.series} metric={metric} compare={compare} />
+
           <ComparisonTable comparison={comparison} />
 
           <div className="grid gap-4 lg:grid-cols-2">
-            <ManualEntry publications={publications} onSaved={() => load(true)} />
-            <CsvImport onImported={() => load(true)} />
+            <ManualEntry
+              publications={publications}
+              onSaved={() => setReloadKey((value) => value + 1)}
+            />
+            <CsvImport onImported={() => setReloadKey((value) => value + 1)} />
           </div>
         </>
       )}
     </div>
+  );
+}
+
+interface ChartSeries {
+  readonly id: string;
+  readonly title: string;
+}
+
+interface ChartPoint {
+  readonly date: string;
+  readonly [key: string]: string | number;
+}
+
+interface ChartData {
+  readonly data: readonly ChartPoint[];
+  readonly series: readonly ChartSeries[];
+}
+
+// Собирает точки по датам: текущий период и, если включено, прошлый.
+function buildChart(
+  snapshots: readonly MetricSnapshot[],
+  previousSnapshots: readonly MetricSnapshot[],
+  available: readonly AvailablePublication[],
+  selectedIds: readonly string[],
+  metric: MetricKind,
+): ChartData {
+  const titles = new Map(available.map((item) => [item.id, item.title]));
+  const presentIds = new Set(
+    [...snapshots, ...previousSnapshots].map((snapshot) => snapshot.articleId),
+  );
+  for (const snapshot of [...snapshots, ...previousSnapshots]) {
+    if (!titles.has(snapshot.articleId)) {
+      titles.set(snapshot.articleId, snapshot.topic);
+    }
+  }
+  const ids =
+    selectedIds.length > 0 ? [...selectedIds] : [...presentIds].filter((id) => titles.has(id));
+  const wanted = new Set(ids);
+  const series = ids.map((id) => ({ id, title: titles.get(id) ?? id }));
+
+  const points = new Map<string, Record<string, string | number>>();
+  const pointFor = (date: string): Record<string, string | number> => {
+    const existing = points.get(date);
+    if (existing) {
+      return existing;
+    }
+    const created: Record<string, string | number> = { date };
+    points.set(date, created);
+    return created;
+  };
+
+  for (const snapshot of snapshots) {
+    if (wanted.has(snapshot.articleId)) {
+      pointFor(snapshot.capturedOn)[`current_${snapshot.articleId}`] = snapshot[metric];
+    }
+  }
+  for (const snapshot of previousSnapshots) {
+    if (wanted.has(snapshot.articleId)) {
+      pointFor(snapshot.capturedOn)[`previous_${snapshot.articleId}`] = snapshot[metric];
+    }
+  }
+
+  return {
+    data: [...points.values()]
+      .map((point) => point as ChartPoint)
+      .sort((left, right) => left.date.localeCompare(right.date)),
+    series,
+  };
+}
+
+interface TooltipEntry {
+  readonly payload?: unknown;
+}
+
+interface MetricsTooltipProps {
+  readonly active?: boolean;
+  readonly label?: unknown;
+  readonly payload?: readonly TooltipEntry[];
+  readonly series: readonly ChartSeries[];
+  readonly metric: MetricKind;
+  readonly compare: boolean;
+}
+
+function MetricsTooltip({ active, label, payload, series, metric, compare }: MetricsTooltipProps) {
+  if (!active || payload === undefined || payload.length === 0) {
+    return null;
+  }
+  const raw = payload[0]?.payload;
+  if (raw === null || typeof raw !== 'object') {
+    return null;
+  }
+  const point = raw as Record<string, unknown>;
+  const numberAt = (key: string): number | null => {
+    const value = point[key];
+    return typeof value === 'number' ? value : null;
+  };
+
+  return (
+    <div className="rounded-xl border border-outline-variant bg-surface-container p-3 text-sm">
+      <p className="font-medium">{typeof label === 'string' ? formatDate(label) : ''}</p>
+      <ul className="mt-2 flex flex-col gap-2">
+        {series.map((item) => {
+          const current = numberAt(`current_${item.id}`);
+          const previous = numberAt(`previous_${item.id}`);
+          if (current === null && previous === null) {
+            return null;
+          }
+          const diff = compare && current !== null && previous !== null ? current - previous : null;
+          return (
+            <li key={item.id}>
+              <p className="font-medium">{item.title}</p>
+              <p className="text-on-surface-variant">
+                {METRIC_LABELS[metric]}: {current ?? '—'}
+                {compare ? ` · прошлый период: ${previous ?? '—'}` : ''}
+              </p>
+              {diff !== null ? (
+                <p className={diff >= 0 ? 'text-tertiary' : 'text-error'}>
+                  {diff >= 0 ? '+' : ''}
+                  {diff}
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function MetricsChart({
+  data,
+  series,
+  metric,
+  compare,
+}: {
+  readonly data: readonly ChartPoint[];
+  readonly series: readonly ChartSeries[];
+  readonly metric: MetricKind;
+  readonly compare: boolean;
+}) {
+  return (
+    <section aria-labelledby="metrics-chart-title" className={PANEL_CLASS}>
+      <h2 id="metrics-chart-title" className="font-display text-lg font-bold">
+        {METRIC_LABELS[metric]} по дням
+      </h2>
+      {data.length === 0 ? (
+        <p className="mt-3 text-sm text-on-surface-variant">Нет данных за выбранный период</p>
+      ) : (
+        <div className="mt-3 h-80 w-full">
+          <ResponsiveContainer width="100%" height="100%">
+            <LineChart data={[...data]}>
+              <CartesianGrid stroke="var(--color-outline-variant)" strokeDasharray="3 3" />
+              <XAxis
+                dataKey="date"
+                tickFormatter={(value: string) => formatDate(value)}
+                tick={{ fill: 'var(--color-on-surface-variant)', fontSize: 12 }}
+              />
+              <YAxis
+                allowDecimals={false}
+                tick={{ fill: 'var(--color-on-surface-variant)', fontSize: 12 }}
+              />
+              <Tooltip
+                contentStyle={TOOLTIP_STYLE}
+                content={(props) => (
+                  <MetricsTooltip
+                    active={props.active}
+                    label={props.label}
+                    payload={props.payload as unknown as readonly TooltipEntry[]}
+                    series={series}
+                    metric={metric}
+                    compare={compare}
+                  />
+                )}
+              />
+              <Legend />
+              {compare
+                ? series.map((item, index) => (
+                    <Line
+                      key={`previous-${item.id}`}
+                      type="monotone"
+                      dataKey={`previous_${item.id}`}
+                      name={`${item.title} · прошлый период`}
+                      stroke={CHART_COLORS[index % CHART_COLORS.length]}
+                      strokeDasharray="6 4"
+                      dot={false}
+                      connectNulls
+                    />
+                  ))
+                : null}
+              {series.map((item, index) => (
+                <Line
+                  key={`current-${item.id}`}
+                  type="monotone"
+                  dataKey={`current_${item.id}`}
+                  name={item.title}
+                  stroke={CHART_COLORS[index % CHART_COLORS.length]}
+                  dot={false}
+                  connectNulls
+                />
+              ))}
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+      )}
+    </section>
   );
 }
 
