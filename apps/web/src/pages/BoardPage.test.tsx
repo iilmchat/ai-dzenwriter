@@ -96,6 +96,19 @@ afterEach(() => {
 });
 
 describe('переходы с доски', () => {
+  it('во время загрузки показывает скелетоны вместо текста', () => {
+    mockedFetch.mockReturnValue(new Promise(() => {}));
+    render(
+      <MemoryRouter>
+        <BoardPage />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByLabelText('Загрузка...')).toBeTruthy();
+    expect(screen.getAllByTestId('skeleton').length).toBeGreaterThanOrEqual(3);
+    expect(screen.queryByText('Загружаем материалы…')).toBeNull();
+  });
+
   it('перетаскивание в «Опубликовано» открывает диалог ссылки', async () => {
     setup();
     await screen.findByText(TOPIC);

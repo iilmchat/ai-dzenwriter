@@ -1,15 +1,22 @@
 import { USER_ROLE_LABELS } from '@dzenwriter/shared';
+import { useCallback, useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router';
 import logoIcon from '../../../../design/brand/logo-icon.svg?url';
 import { NotificationsPanel } from '../features/notifications/NotificationsPanel';
 import { useSession } from '../session/SessionContext';
 import { BUTTON_SECONDARY, FOCUS_RING } from '../shared/ui/classes';
 import { GlobalSearch } from '../shared/ui/GlobalSearch';
+import { HotkeysHelp } from './HotkeysHelp';
 import { ServiceStatus } from './ServiceStatus';
+import { ThemeToggle } from './ThemeToggle';
+import { useGlobalHotkeys } from './useGlobalHotkeys';
 
 export function AppShell() {
   const { state, signOut } = useSession();
   const user = state.phase === 'authenticated' ? state.user : undefined;
+  const [hotkeysOpen, setHotkeysOpen] = useState(false);
+  const openHelp = useCallback(() => setHotkeysOpen(true), []);
+  useGlobalHotkeys({ onHelp: openHelp });
 
   return (
     <div className="flex min-h-screen flex-col">
@@ -60,6 +67,15 @@ export function AppShell() {
           </nav>
           {user ? (
             <div className="ml-auto flex items-center gap-3 text-sm">
+              <ThemeToggle />
+              <button
+                type="button"
+                aria-label="Горячие клавиши"
+                className={`inline-flex h-10 w-10 items-center justify-center rounded-full border border-outline-variant bg-surface text-on-surface ${FOCUS_RING}`}
+                onClick={() => setHotkeysOpen(true)}
+              >
+                ?
+              </button>
               <GlobalSearch />
               <NotificationsPanel />
               <span>
@@ -83,6 +99,7 @@ export function AppShell() {
           </span>
         </div>
       </footer>
+      <HotkeysHelp open={hotkeysOpen} onClose={() => setHotkeysOpen(false)} />
     </div>
   );
 }

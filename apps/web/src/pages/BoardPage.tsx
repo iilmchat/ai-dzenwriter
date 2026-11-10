@@ -19,6 +19,7 @@ import { useCatalog } from '../features/catalog/useCatalog';
 import { useSession } from '../session/SessionContext';
 import { BUTTON_PRIMARY, FOCUS_RING, PANEL_CLASS } from '../shared/ui/classes';
 import { Notice } from '../shared/ui/Notice';
+import { Skeleton } from '../shared/ui/Skeleton';
 
 const EMPTY_FILTERS: Filters = {
   styleId: '',
@@ -271,7 +272,25 @@ export function BoardPage() {
       />
 
       {moveError ? <Notice tone="error">{moveError}</Notice> : null}
-      {board.phase === 'loading' ? <Notice>Загружаем материалы…</Notice> : null}
+      {board.phase === 'loading' ? (
+        <div
+          aria-busy="true"
+          aria-label="Загрузка..."
+          className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3"
+        >
+          {Array.from({ length: 6 }, (_, index) => (
+            <div key={index} className="rounded-xl border border-outline-variant bg-surface p-4">
+              <Skeleton width="70%" height="1.25rem" />
+              <Skeleton width="45%" height="0.9rem" className="mt-3" />
+              <div className="mt-4 flex items-center gap-2">
+                <Skeleton width="2rem" height="2rem" className="rounded-full" />
+                <Skeleton width="40%" height="0.8rem" />
+              </div>
+              <Skeleton height="1.75rem" className="mt-3" />
+            </div>
+          ))}
+        </div>
+      ) : null}
       {board.phase === 'error' ? <Notice tone="error">{board.message}</Notice> : null}
       {board.phase === 'ready' && board.truncated ? (
         <Notice>Показаны первые 500 материалов. Уточните фильтры.</Notice>

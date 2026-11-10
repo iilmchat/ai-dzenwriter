@@ -5,9 +5,18 @@ interface NoticeProps {
   readonly children: ReactNode;
 }
 
-// Сообщение без роли status: на странице может быть только один статус сервиса.
+// Ошибки объявляются сразу, нейтральные сообщения — вежливо. Роль status
+// остаётся только у ServiceStatus, чтобы не дублировать объявления.
 export function Notice({ tone = 'neutral', children }: NoticeProps) {
   const toneClass =
     tone === 'error' ? 'bg-error-container text-on-error-container' : 'text-on-surface-variant';
-  return <p className={`rounded-xl p-4 text-base ${toneClass}`}>{children}</p>;
+  return (
+    <p
+      role={tone === 'error' ? 'alert' : undefined}
+      aria-live={tone === 'error' ? 'assertive' : 'polite'}
+      className={`rounded-xl p-4 text-base ${toneClass}`}
+    >
+      {children}
+    </p>
+  );
 }

@@ -9,6 +9,7 @@ import { fetchCalendar } from '../api/calendar';
 import { errorMessage } from '../api/client';
 import { BUTTON_SECONDARY, FOCUS_RING, PANEL_CLASS } from '../shared/ui/classes';
 import { Notice } from '../shared/ui/Notice';
+import { Skeleton } from '../shared/ui/Skeleton';
 
 const WEEKDAYS = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт', 'Сб', 'Вс'];
 const EMPTY: CalendarResponse = { items: [], authorLoad: [] };
@@ -147,7 +148,23 @@ export function CalendarPage({ initialMonth }: { readonly initialMonth?: string 
       </header>
 
       {error !== undefined ? <Notice tone="error">{error}</Notice> : null}
-      {loading ? <Notice>Загружаем календарь…</Notice> : null}
+      {loading ? (
+        <section
+          aria-busy="true"
+          aria-label="Загрузка..."
+          className={`${PANEL_CLASS} grid grid-cols-7 gap-1`}
+        >
+          {Array.from({ length: 42 }, (_, index) => (
+            <div
+              key={index}
+              className="min-h-24 rounded-lg border border-outline-variant bg-surface p-1.5"
+            >
+              <Skeleton width="1.5rem" height="0.8rem" />
+              <Skeleton height="2rem" className="mt-2" />
+            </div>
+          ))}
+        </section>
+      ) : null}
 
       {!loading ? (
         <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_300px]">

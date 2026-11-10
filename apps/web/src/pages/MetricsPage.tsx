@@ -22,6 +22,7 @@ import {
   PANEL_CLASS,
 } from '../shared/ui/classes';
 import { Notice } from '../shared/ui/Notice';
+import { Skeleton } from '../shared/ui/Skeleton';
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 type MetricKind = 'views' | 'reads';
@@ -168,7 +169,10 @@ export function MetricsPage() {
       {error !== undefined ? <Notice tone="error">{error}</Notice> : null}
 
       {loading ? (
-        <Notice>Загружаем метрики…</Notice>
+        <section aria-busy="true" aria-label="Загрузка..." className={PANEL_CLASS}>
+          <Skeleton width="14rem" height="1.5rem" />
+          <Skeleton height="20rem" className="mt-4" />
+        </section>
       ) : (
         <>
           <section aria-labelledby="metrics-filters-title" className={PANEL_CLASS}>
