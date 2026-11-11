@@ -68,8 +68,29 @@ export interface TitlesGenerationSnapshot {
   readonly promptSha256: string;
 }
 
+// Служебные запуски автопилота: в базе только размеры и причина, без текстов.
+export interface AutopilotExtractSnapshot {
+  readonly kind: 'autopilot_extract';
+  readonly topic: string;
+  readonly rawTaskChars: number;
+  readonly factsCount: number;
+  readonly promptSha256: string;
+}
+
+export interface AutopilotRefineSnapshot {
+  readonly kind: 'autopilot_refine';
+  readonly iteration: number;
+  readonly blocking: number;
+  readonly warnings: number;
+  readonly promptSha256: string;
+}
+
 export type GenerationSnapshot =
-  GenerationInputSnapshot | FragmentGenerationSnapshot | TitlesGenerationSnapshot;
+  | GenerationInputSnapshot
+  | FragmentGenerationSnapshot
+  | TitlesGenerationSnapshot
+  | AutopilotExtractSnapshot
+  | AutopilotRefineSnapshot;
 
 export interface NewGenerationRun {
   readonly articleId: string;

@@ -7,7 +7,9 @@ import {
   loadBasePrompt,
   loadBriefPrompt,
   loadExpandPrompt,
+  loadFactExtractorPrompt,
   loadFragmentPrompt,
+  loadRefinerPrompt,
   loadTitlesPrompt,
   resolvePromptsDir,
 } from './prompt-config';
@@ -18,8 +20,10 @@ import {
   BRIEF_PROMPT,
   ENV,
   EXPAND_PROMPT,
+  FACT_EXTRACTOR_PROMPT,
   FRAGMENT_PROMPT,
   LLM_CONFIG,
+  REFINER_PROMPT,
   TITLES_PROMPT,
 } from './tokens';
 
@@ -69,6 +73,16 @@ import {
       inject: [ENV],
       useFactory: (env: Env): string => loadTitlesPrompt(resolvePromptsDir(env.PROMPTS_DIR)),
     },
+    {
+      provide: FACT_EXTRACTOR_PROMPT,
+      inject: [ENV],
+      useFactory: (env: Env): string => loadFactExtractorPrompt(resolvePromptsDir(env.PROMPTS_DIR)),
+    },
+    {
+      provide: REFINER_PROMPT,
+      inject: [ENV],
+      useFactory: (env: Env): string => loadRefinerPrompt(resolvePromptsDir(env.PROMPTS_DIR)),
+    },
   ],
   exports: [
     ENV,
@@ -80,6 +94,8 @@ import {
     BRIEF_PROMPT,
     FRAGMENT_PROMPT,
     TITLES_PROMPT,
+    FACT_EXTRACTOR_PROMPT,
+    REFINER_PROMPT,
   ],
 })
 export class ConfigModule {}

@@ -19,5 +19,6 @@ import { LlmModule } from './llm.module';
   ],
   controllers: [GenerationController],
   providers: [GenerationService],
+  exports: [GenerationService],
 })
 export class GenerationModule {}

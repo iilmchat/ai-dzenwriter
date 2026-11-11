@@ -8,16 +8,18 @@ import {
   type UserRole,
 } from '@dzenwriter/shared';
 import { useEffect, useId, useState } from 'react';
+import { useNavigate } from 'react-router';
 import { fetchArticles, transitionArticle, type BoardFilters as Filters } from '../api/articles';
 import { errorMessage } from '../api/client';
 import { ArticleCard, type MoveOption } from '../features/board/ArticleCard';
+import { AutopilotDialog } from '../features/board/AutopilotDialog';
 import { BoardFilters } from '../features/board/BoardFilters';
 import { CreateArticleForm } from '../features/board/CreateArticleForm';
 import { nextStepFor } from '../features/board/nextStep';
 import { TransitionDialog } from '../features/board/TransitionDialog';
 import { useCatalog } from '../features/catalog/useCatalog';
 import { useSession } from '../session/SessionContext';
-import { BUTTON_PRIMARY, FOCUS_RING, PANEL_CLASS } from '../shared/ui/classes';
+import { BUTTON_PRIMARY, BUTTON_SECONDARY, FOCUS_RING, PANEL_CLASS } from '../shared/ui/classes';
 import { Notice } from '../shared/ui/Notice';
 import { Skeleton } from '../shared/ui/Skeleton';
 
@@ -75,6 +77,7 @@ interface PendingMove {
 
 export function BoardPage() {
   const catalog = useCatalog();
+  const navigate = useNavigate();
   const { state: session } = useSession();
   const user = session.phase === 'authenticated' ? session.user : undefined;
   const [filters, setFilters] = useState<Filters>(EMPTY_FILTERS);
@@ -82,6 +85,7 @@ export function BoardPage() {
   const [onlyBlocked, setOnlyBlocked] = useState(false);
   const [reloadKey, setReloadKey] = useState(0);
   const [creating, setCreating] = useState(false);
+  const [autopilotOpen, setAutopilotOpen] = useState(false);
   const [confirmation, setConfirmation] = useState<Confirmation | undefined>(undefined);
   const [board, setBoard] = useState<BoardState>({ phase: 'loading' });
   const [draggingId, setDraggingId] = useState<string | undefined>(undefined);
@@ -220,6 +224,14 @@ export function BoardPage() {
         >
           {creating ? 'Закрыть форму' : 'Новый материал'}
         </button>
+        <button
+          type="button"
+          className={`${BUTTON_SECONDARY} ${FOCUS_RING}`}
+          aria-haspopup="dialog"
+          onClick={() => setAutopilotOpen(true)}
+        >
+          Автопилот (Из текста)
+        </button>
       </header>
 
       {confirmation ? (
@@ -331,6 +343,16 @@ export function BoardPage() {
           required={pendingMove.required}
           onSubmit={submitPending}
           onCancel={() => setPendingMove(undefined)}
+        />
+      ) : null}
+
+      {autopilotOpen ? (
+        <AutopilotDialog
+          onCreated={(response) => {
+            setAutopilotOpen(false);
+            navigate(`/articles/${response.articleId}`);
+          }}
+          onCancel={() => setAutopilotOpen(false)}
         />
       ) : null}
     </div>

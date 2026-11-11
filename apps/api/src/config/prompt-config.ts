@@ -7,6 +7,8 @@ const EXPAND_PROMPT_FILE = 'dzen_expand.md';
 const BRIEF_PROMPT_FILE = 'dzen_brief.md';
 const FRAGMENT_PROMPT_FILE = 'dzen_fragment.md';
 const TITLES_PROMPT_FILE = 'dzen_titles.md';
+const FACT_EXTRACTOR_PROMPT_FILE = 'dzen_fact_extractor.md';
+const REFINER_PROMPT_FILE = 'dzen_refiner.md';
 
 // Ищет каталог prompts/ вверх от указанной папки: так же, как ищется config/.
 export function resolvePromptsDir(explicitDir?: string, startDir: string = __dirname): string {
@@ -66,6 +68,16 @@ export function loadFragmentPrompt(promptsDir: string): string {
 // Варианты заголовка: тема, текущий заголовок и бриф.
 export function loadTitlesPrompt(promptsDir: string): string {
   return loadPromptFile(promptsDir, TITLES_PROMPT_FILE);
+}
+
+// Извлечение фактов из сырого задания для автопилота.
+export function loadFactExtractorPrompt(promptsDir: string): string {
+  return loadPromptFile(promptsDir, FACT_EXTRACTOR_PROMPT_FILE);
+}
+
+// Самокоррекция текста по отчёту проверок.
+export function loadRefinerPrompt(promptsDir: string): string {
+  return loadPromptFile(promptsDir, REFINER_PROMPT_FILE);
 }
 
 function loadPromptFile(promptsDir: string, name: string): string {

@@ -7,3 +7,5 @@ export const EXPAND_PROMPT = Symbol('EXPAND_PROMPT');
 export const BRIEF_PROMPT = Symbol('BRIEF_PROMPT');
 export const FRAGMENT_PROMPT = Symbol('FRAGMENT_PROMPT');
 export const TITLES_PROMPT = Symbol('TITLES_PROMPT');
+export const FACT_EXTRACTOR_PROMPT = Symbol('FACT_EXTRACTOR_PROMPT');
+export const REFINER_PROMPT = Symbol('REFINER_PROMPT');

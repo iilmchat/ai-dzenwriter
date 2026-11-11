@@ -15,6 +15,7 @@ import { exportUrl } from '../api/publications';
 import { fetchVersion } from '../api/versions';
 import { ArticleEditForm } from '../features/article/ArticleEditForm';
 import { ArticleFactsPanel } from '../features/article/ArticleFactsPanel';
+import { AutopilotPanel } from '../features/article/AutopilotPanel';
 import { BriefPanel } from '../features/article/BriefPanel';
 import { ChecksPanel } from '../features/article/ChecksPanel';
 import { GenerationPanel } from '../features/article/GenerationPanel';
@@ -201,6 +202,8 @@ export function ArticlePage() {
         products={catalog.products}
         onChanged={replace}
       />
+
+      <AutopilotPanel article={article} canRun={canChangeFacts} onChanged={replace} />
 
       {canEdit ? <ArticleEditForm article={article} onSaved={replace} /> : null}
 
