@@ -10,7 +10,13 @@ import {
 } from '@dzenwriter/shared';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { fetchArticle, generateTitleOptions, saveDraft, transitionArticle } from '../api/articles';
+import {
+  confirmCheck,
+  fetchArticle,
+  generateTitleOptions,
+  saveDraft,
+  transitionArticle,
+} from '../api/articles';
 import { ApiError, errorMessage } from '../api/client';
 import { startGeneration } from '../api/generation';
 import { createReviewComment } from '../api/reviews';
@@ -191,7 +197,8 @@ export function EditorPage() {
     }
     const timer = setTimeout(() => {
       checkVersion(id, draftFields(draft)).then(
-        (response: CheckVersionResponse) => setChecks(response.checks),
+        (response: CheckVersionResponse) =>
+          setChecks((previous) => mergeConfirmedChecks(previous, response.checks)),
         () => undefined,
       );
     }, CHECK_DEBOUNCE_MS);
@@ -398,6 +405,10 @@ export function EditorPage() {
       const version = await fetchVersion(id, number);
       setDraft(toDraft(version));
       setChecks(version.checks);
+      // Шапка показывает именно открытую версию, а не последнюю сохранённую.
+      setArticle((current) =>
+        current === null ? current : { ...current, currentVersionNumber: version.number },
+      );
       setNotice(`Открыта версия ${number}.`);
       setHistoryOpen(false);
     } catch (cause) {
@@ -511,6 +522,20 @@ export function EditorPage() {
     } finally {
       setCommentSaving(false);
     }
+  }
+
+  async function handleConfirmCheck(checkIndex: number, comment: string): Promise<void> {
+    if (article === null) {
+      throw new Error('Материал ещё не загружен');
+    }
+    const versionNumber = article.currentVersionNumber;
+    if (versionNumber === null) {
+      throw new Error('Сначала сохраните версию: подтверждение привязано к версии');
+    }
+    const updated = await confirmCheck(id, versionNumber, checkIndex, comment);
+    setChecks(updated.checks);
+    setNotice('Проверка подтверждена.');
+    await load();
   }
 
   async function suggestTitles() {
@@ -700,6 +725,7 @@ export function EditorPage() {
 
         <EditorChecksPanel
           checks={checks}
+          onConfirm={canEdit ? handleConfirmCheck : undefined}
           onFocus={(check) =>
             editor.current?.focusRange(
               check.start !== undefined && check.end !== undefined
@@ -851,6 +877,38 @@ interface DraftSource {
   readonly advertisingLabel: boolean;
   readonly disclaimerText: string | null;
   readonly claims: readonly ClaimDraft[];
+}
+
+// Live Check присылает новый массив проверок без решений автора. Переносим
+// подтверждение на ту же проверку по позиции фрагмента или по excerpt.
+export function mergeConfirmedChecks(
+  previous: readonly VersionCheck[],
+  next: readonly VersionCheck[],
+): VersionCheck[] {
+  return next.map((check) => {
+    const confirmed = previous.find((old) => {
+      if (old.decision !== 'confirmed' || old.id !== check.id) {
+        return false;
+      }
+      const sameSpan =
+        old.start === check.start &&
+        old.end === check.end &&
+        (old.start !== undefined || old.end !== undefined);
+      const sameExcerpt =
+        old.excerpt !== undefined && check.excerpt !== undefined && old.excerpt === check.excerpt;
+      return sameSpan || sameExcerpt;
+    });
+    if (!confirmed) {
+      return check;
+    }
+    return {
+      ...check,
+      decision: 'confirmed',
+      comment: confirmed.comment,
+      confirmedBy: confirmed.confirmedBy,
+      confirmedAt: confirmed.confirmedAt,
+    };
+  });
 }
 
 function toDraft(source: DraftSource): Draft {

@@ -1,10 +1,10 @@
-import type { ArticleDetail, ArticleDraft, VersionDetail } from '@dzenwriter/shared';
-import { cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import type { ArticleDetail, ArticleDraft, VersionCheck, VersionDetail } from '@dzenwriter/shared';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { fetchArticle, saveDraft } from '../api/articles';
 import { checkVersion, fetchVersion, fetchVersions } from '../api/versions';
-import { EditorPage } from './EditorPage';
+import { EditorPage, mergeConfirmedChecks } from './EditorPage';
 
 const USER = vi.hoisted(() => ({
   id: '00000000-0000-4000-8000-000000000001',
@@ -18,6 +18,7 @@ vi.mock('../api/articles', () => ({
   generateTitleOptions: vi.fn(),
   saveDraft: vi.fn(),
   transitionArticle: vi.fn(),
+  confirmCheck: vi.fn(),
 }));
 
 vi.mock('../api/versions', () => ({
@@ -194,5 +195,107 @@ describe('редактор и серверные черновики', () => {
         articleMarkdown: 'Новая правка',
       }),
     );
+  });
+});
+
+describe('редактор: проверки и версия', () => {
+  const CHECK: VersionCheck = {
+    id: 'numbers_must_map_to_facts',
+    severity: 'block',
+    message: 'Число 42 не найдено в фактах',
+    start: 10,
+    end: 12,
+    excerpt: '42',
+  };
+
+  it('переносит подтверждения на новые результаты Live Check', () => {
+    const previous: VersionCheck[] = [
+      {
+        ...CHECK,
+        decision: 'confirmed',
+        comment: 'Число 42 — номер пункта',
+        confirmedBy: USER.id,
+        confirmedAt: '2026-10-22T11:00:00.000Z',
+      },
+    ];
+    const next: VersionCheck[] = [
+      { ...CHECK },
+      { ...CHECK, id: 'paragraph_length', message: 'Абзац длинный', start: 20, end: 30 },
+    ];
+
+    const merged = mergeConfirmedChecks(previous, next);
+
+    expect(merged[0]).toMatchObject({
+      id: CHECK.id,
+      decision: 'confirmed',
+      comment: 'Число 42 — номер пункта',
+    });
+    expect(merged[1]?.decision).toBeUndefined();
+  });
+
+  it('переносит подтверждение по excerpt при сдвиге позиции', () => {
+    const previous: VersionCheck[] = [{ ...CHECK, decision: 'confirmed', comment: 'Проверено' }];
+    const next: VersionCheck[] = [{ ...CHECK, start: 14, end: 16 }];
+
+    expect(mergeConfirmedChecks(previous, next)[0]).toMatchObject({
+      decision: 'confirmed',
+      comment: 'Проверено',
+    });
+  });
+
+  it('обновляет номер версии в шапке при открытии старой версии', async () => {
+    mockedFetchArticle.mockResolvedValue({
+      ...DETAIL,
+      currentVersionNumber: 2,
+      draft: null,
+    });
+    mockedFetchVersions.mockResolvedValue({
+      items: [
+        {
+          number: 2,
+          origin: 'manual',
+          advertisingLabel: false,
+          blockingChecks: 0,
+          createdAt: '2026-10-22T10:00:00.000Z',
+          createdBy: 'anna',
+        },
+        {
+          number: 1,
+          origin: 'generated',
+          advertisingLabel: false,
+          blockingChecks: 0,
+          createdAt: '2026-10-21T10:00:00.000Z',
+          createdBy: 'anna',
+        },
+      ],
+    });
+    mockedFetchVersion.mockImplementation(async (_id, number) => ({
+      ...VERSION,
+      number,
+      title: `Заголовок версии ${number}`,
+      articleMarkdown: `Текст версии ${number}.`,
+    }));
+    mockedCheckVersion.mockResolvedValue({ checks: [], claims: [] });
+
+    render(
+      <MemoryRouter initialEntries={[`/articles/${ARTICLE_ID}/edit`]}>
+        <Routes>
+          <Route path="/articles/:id/edit" element={<EditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    expect(await screen.findByText(/версия 2 ·/)).toBeTruthy();
+    fireEvent.click(screen.getByRole('button', { name: 'История версий' }));
+
+    const row = screen.getByText(/Версия 1:/).closest('li');
+    if (!row) {
+      throw new Error('Нет строки версии 1');
+    }
+    fireEvent.click(within(row).getByRole('button', { name: 'Открыть' }));
+
+    await waitFor(() => expect(mockedFetchVersion).toHaveBeenCalledWith(ARTICLE_ID, 1));
+    expect(await screen.findByText(/версия 1 ·/)).toBeTruthy();
+    expect(screen.queryByText(/версия 2 ·/)).toBeNull();
   });
 });
