@@ -47,10 +47,10 @@ export interface ExportArticle {
 }
 
 // Метки F1, F2 нужны проверкам и аудиту внутри системы, но читателю в Дзене
-// они не нужны. Удаляем скобки, метку и лишние пробелы вокруг неё.
+// они не нужны. Удаляем скобки, необязательное слово «факт», метку и пробелы.
 export function stripFactLabels(markdown: string): string {
   return markdown
-    .replace(/[ \t]*[([]\s*F\d+\s*[)\]][ \t]*/g, ' ')
+    .replace(/[ \t]*[([]\s*(?:факт\s+)?F\d+\s*[)\]][ \t]*/gi, ' ')
     .replace(/[ \t]{2,}/g, ' ')
     .replace(/[ \t]+([.,;:!?])/g, '$1')
     .replace(/[ \t]+\n/g, '\n')
