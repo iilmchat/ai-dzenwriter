@@ -125,6 +125,9 @@ export function EditorPage() {
   const [autosavedAt, setAutosavedAt] = useState<Date | undefined>(undefined);
   const [conflict, setConflict] = useState<Conflict | undefined>(undefined);
   const [checks, setChecks] = useState<VersionCheck[]>([]);
+  // Проверки сохранённой версии нужны для правильного индекса при подтверждении:
+  // Live Check может перестроить отображаемый список.
+  const [versionChecks, setVersionChecks] = useState<VersionCheck[]>([]);
   const [error, setError] = useState<string | undefined>(undefined);
   const [notice, setNotice] = useState<string | undefined>(undefined);
   const [saving, setSaving] = useState(false);
@@ -165,6 +168,7 @@ export function EditorPage() {
     setSavedDraft(versionDraft);
     setDraft(openDraft);
     setChecks(version?.checks ?? []);
+    setVersionChecks(version?.checks ?? []);
     draftVersionRef.current = nextDraftVersion;
     setAutosavedAt(detail.draft === null ? undefined : new Date(detail.draft.updatedAt));
     if (detail.draft !== null) {
@@ -314,6 +318,7 @@ export function EditorPage() {
       setDraft(next);
       setSavedDraft(next);
       setChecks(response.version.checks);
+      setVersionChecks(response.version.checks);
       setExpectedVersion(response.article.version);
       // Версия зафиксировала правки: сервер удалил черновик, локальная версия сбрасывается.
       draftVersionRef.current = 0;
@@ -348,6 +353,7 @@ export function EditorPage() {
     setDraft(next);
     setSavedDraft(conflict.latestVersion === null ? EMPTY_DRAFT : toDraft(conflict.latestVersion));
     setChecks(conflict.latestVersion?.checks ?? []);
+    setVersionChecks(conflict.latestVersion?.checks ?? []);
     setExpectedVersion(conflict.latestArticle.version);
     draftVersionRef.current = nextDraftVersion;
     setAutosavedAt(latestDraft === null ? undefined : new Date(latestDraft.updatedAt));
@@ -389,6 +395,7 @@ export function EditorPage() {
       setDraft(next);
       setSavedDraft(next);
       setChecks(response.version.checks);
+      setVersionChecks(response.version.checks);
       setExpectedVersion(response.article.version);
       draftVersionRef.current = 0;
       setAutosavedAt(undefined);
@@ -405,6 +412,7 @@ export function EditorPage() {
       const version = await fetchVersion(id, number);
       setDraft(toDraft(version));
       setChecks(version.checks);
+      setVersionChecks(version.checks);
       // Шапка показывает именно открытую версию, а не последнюю сохранённую.
       setArticle((current) =>
         current === null ? current : { ...current, currentVersionNumber: version.number },
@@ -524,7 +532,7 @@ export function EditorPage() {
     }
   }
 
-  async function handleConfirmCheck(checkIndex: number, comment: string): Promise<void> {
+  async function handleConfirmCheck(check: VersionCheck, comment: string): Promise<void> {
     if (article === null) {
       throw new Error('Материал ещё не загружен');
     }
@@ -532,10 +540,29 @@ export function EditorPage() {
     if (versionNumber === null) {
       throw new Error('Сначала сохраните версию: подтверждение привязано к версии');
     }
-    const updated = await confirmCheck(id, versionNumber, checkIndex, comment);
-    setChecks(updated.checks);
-    setNotice('Проверка подтверждена.');
-    await load();
+    // Индекс берём из сохранённой версии: Live Check мог перестроить checks.
+    const checkIndex = findCheckIndex(versionChecks, check);
+    if (checkIndex < 0) {
+      setError('Проверка изменилась: обновите версию и повторите подтверждение.');
+      return;
+    }
+
+    setError(undefined);
+    try {
+      const updated = await confirmCheck(id, versionNumber, checkIndex, comment);
+      setChecks(updated.checks);
+      setVersionChecks(updated.checks);
+      setNotice('Проверка подтверждена.');
+      await load();
+    } catch (error) {
+      if (error instanceof ApiError && error.status === 409) {
+        // Проверка уже подтверждена на сервере. Перезагрузка снимает блокировку.
+        await load();
+        setNotice('Проверка уже подтверждена на сервере.');
+      } else {
+        setError(errorMessage(error));
+      }
+    }
   }
 
   async function suggestTitles() {
@@ -886,18 +913,7 @@ export function mergeConfirmedChecks(
   next: readonly VersionCheck[],
 ): VersionCheck[] {
   return next.map((check) => {
-    const confirmed = previous.find((old) => {
-      if (old.decision !== 'confirmed' || old.id !== check.id) {
-        return false;
-      }
-      const sameSpan =
-        old.start === check.start &&
-        old.end === check.end &&
-        (old.start !== undefined || old.end !== undefined);
-      const sameExcerpt =
-        old.excerpt !== undefined && check.excerpt !== undefined && old.excerpt === check.excerpt;
-      return sameSpan || sameExcerpt;
-    });
+    const confirmed = previous.find((old) => old.decision === 'confirmed' && sameCheck(old, check));
     if (!confirmed) {
       return check;
     }
@@ -909,6 +925,28 @@ export function mergeConfirmedChecks(
       confirmedAt: confirmed.confirmedAt,
     };
   });
+}
+
+// Идентификатор проверки не уникален (одна проверка может встретиться несколько
+// раз), поэтому сравниваем ещё позицию фрагмента или excerpt.
+function sameCheck(left: VersionCheck, right: VersionCheck): boolean {
+  if (left.id !== right.id) {
+    return false;
+  }
+  const sameSpan =
+    left.start === right.start &&
+    left.end === right.end &&
+    (left.start !== undefined || left.end !== undefined);
+  const sameExcerpt =
+    left.excerpt !== undefined && right.excerpt !== undefined && left.excerpt === right.excerpt;
+  return sameSpan || sameExcerpt;
+}
+
+export function findCheckIndex(
+  versionChecks: readonly VersionCheck[],
+  check: VersionCheck,
+): number {
+  return versionChecks.findIndex((item) => sameCheck(item, check));
 }
 
 function toDraft(source: DraftSource): Draft {

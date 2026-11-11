@@ -7,8 +7,9 @@ export interface EditorChecksPanelProps {
   readonly checks: readonly VersionCheck[];
   // Клик по проверке переводит курсор в исходник и подсвечивает фрагмент.
   readonly onFocus: (check: VersionCheck) => void;
-  // Подтверждение блокирующей проверки прямо в редакторе.
-  readonly onConfirm?: (checkIndex: number, comment: string) => Promise<void>;
+  // Подтверждение блокирующей проверки прямо в редакторе. Передаём саму
+  // проверку: редактор сам найдёт её индекс в сохранённой версии.
+  readonly onConfirm?: (check: VersionCheck, comment: string) => Promise<void>;
 }
 
 const GROUPS: readonly { readonly severity: VersionCheck['severity']; readonly title: string }[] = [
@@ -33,7 +34,7 @@ export function EditorChecksPanel({ checks, onFocus, onConfirm }: EditorChecksPa
     setError(undefined);
   }
 
-  async function submit(index: number) {
+  async function submit(check: VersionCheck) {
     if (onConfirm === undefined) {
       return;
     }
@@ -45,7 +46,7 @@ export function EditorChecksPanel({ checks, onFocus, onConfirm }: EditorChecksPa
     setSaving(true);
     setError(undefined);
     try {
-      await onConfirm(index, trimmed);
+      await onConfirm(check, trimmed);
       setOpenIndex(null);
       setComment('');
     } catch (cause) {
@@ -140,7 +141,7 @@ export function EditorChecksPanel({ checks, onFocus, onConfirm }: EditorChecksPa
                                 type="button"
                                 className={`${BUTTON_SECONDARY} px-3 py-1.5 text-xs`}
                                 disabled={saving || comment.trim().length < 10}
-                                onClick={() => void submit(checkIndex)}
+                                onClick={() => void submit(check)}
                               >
                                 {saving ? 'Отправляем…' : 'Отправить'}
                               </button>

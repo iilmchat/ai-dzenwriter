@@ -35,7 +35,7 @@ describe('панель проверок редактора', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
 
     await waitFor(() =>
-      expect(onConfirm).toHaveBeenCalledWith(0, 'Число 42 — это номер пункта правил'),
+      expect(onConfirm).toHaveBeenCalledWith(BLOCKING, 'Число 42 — это номер пункта правил'),
     );
     await waitFor(() => expect(screen.queryByLabelText('Почему проверку можно снять')).toBeNull());
   });

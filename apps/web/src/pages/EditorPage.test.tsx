@@ -2,9 +2,10 @@ import type { ArticleDetail, ArticleDraft, VersionCheck, VersionDetail } from '@
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchArticle, saveDraft } from '../api/articles';
+import { confirmCheck, fetchArticle, saveDraft } from '../api/articles';
+import { ApiError } from '../api/client';
 import { checkVersion, fetchVersion, fetchVersions } from '../api/versions';
-import { EditorPage, mergeConfirmedChecks } from './EditorPage';
+import { EditorPage, findCheckIndex, mergeConfirmedChecks } from './EditorPage';
 
 const USER = vi.hoisted(() => ({
   id: '00000000-0000-4000-8000-000000000001',
@@ -73,6 +74,7 @@ const mockedFetchVersions = vi.mocked(fetchVersions);
 const mockedFetchVersion = vi.mocked(fetchVersion);
 const mockedSaveDraft = vi.mocked(saveDraft);
 const mockedCheckVersion = vi.mocked(checkVersion);
+const mockedConfirmCheck = vi.mocked(confirmCheck);
 
 const ARTICLE_ID = '00000000-0000-4000-8000-0000000000a1';
 
@@ -241,6 +243,48 @@ describe('редактор: проверки и версия', () => {
       decision: 'confirmed',
       comment: 'Проверено',
     });
+  });
+
+  it('находит индекс проверки в сохранённой версии, даже если Live Check перестроил список', () => {
+    const first: VersionCheck = {
+      ...CHECK,
+      id: 'paragraph_length',
+      message: 'Абзац длинный',
+      start: 1,
+      end: 4,
+      excerpt: 'Текст',
+    };
+    const shifted: VersionCheck = { ...CHECK, start: 14, end: 16 };
+
+    expect(findCheckIndex([first, CHECK], shifted)).toBe(1);
+  });
+
+  it('при 409 перезагружает данные и не показывает красную ошибку', async () => {
+    mockedFetchArticle.mockResolvedValue(DETAIL);
+    mockedFetchVersions.mockResolvedValue({ items: [] });
+    mockedFetchVersion.mockResolvedValue({ ...VERSION, checks: [CHECK] });
+    mockedCheckVersion.mockResolvedValue({ checks: [CHECK], claims: [] });
+    mockedConfirmCheck.mockRejectedValue(new ApiError(409, 'Проверка уже подтверждена'));
+
+    render(
+      <MemoryRouter initialEntries={[`/articles/${ARTICLE_ID}/edit`]}>
+        <Routes>
+          <Route path="/articles/:id/edit" element={<EditorPage />} />
+        </Routes>
+      </MemoryRouter>,
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: 'Подтвердить' }));
+    fireEvent.change(screen.getByLabelText('Почему проверку можно снять'), {
+      target: { value: 'Число 42 — номер пункта правил' },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'Отправить' }));
+
+    await waitFor(() =>
+      expect(screen.getByText('Проверка уже подтверждена на сервере.')).toBeTruthy(),
+    );
+    await waitFor(() => expect(mockedFetchArticle).toHaveBeenCalledTimes(2));
+    expect(screen.queryByRole('alert')).toBeNull();
   });
 
   it('обновляет номер версии в шапке при открытии старой версии', async () => {
