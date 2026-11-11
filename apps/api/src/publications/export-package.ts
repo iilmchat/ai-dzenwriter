@@ -46,13 +46,24 @@ export interface ExportArticle {
   readonly facts: readonly ExportFact[];
 }
 
+// Метки F1, F2 нужны проверкам и аудиту внутри системы, но читателю в Дзене
+// они не нужны. Удаляем скобки, метку и лишние пробелы вокруг неё.
+export function stripFactLabels(markdown: string): string {
+  return markdown
+    .replace(/[ \t]*[([]\s*F\d+\s*[)\]][ \t]*/g, ' ')
+    .replace(/[ \t]{2,}/g, ' ')
+    .replace(/[ \t]+([.,;:!?])/g, '$1')
+    .replace(/[ \t]+\n/g, '\n')
+    .replace(/\n[ \t]+/g, '\n');
+}
+
 // Публичный текст собирает код, а не модель: тот же формат, что в спецификации Dzen Writer.
 export function buildPublicText(article: ExportArticle): string {
   const version = article.version;
   return [
     `# ${version.title}`,
     '',
-    version.articleMarkdown.trim(),
+    stripFactLabels(version.articleMarkdown.trim()),
     '',
     '---',
     `SEO_TITLE: ${version.seoTitle}`,

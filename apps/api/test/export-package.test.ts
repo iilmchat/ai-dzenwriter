@@ -5,6 +5,7 @@ import {
   buildMetadata,
   buildPublicText,
   exportFileName,
+  stripFactLabels,
   type ExportArticle,
 } from '../src/publications/export-package';
 
@@ -66,6 +67,25 @@ describe('публичный текст для Дзена', () => {
         '',
       ].join('\n'),
     );
+  });
+
+  it('убирает служебные метки фактов из article.md, не трогая версию', () => {
+    const articleMarkdown = 'Слово (F1) слово, [F2] и ( F10 ).\n\nЕщё (F3) абзац.';
+    const article = {
+      ...ARTICLE,
+      version: { ...VERSION, articleMarkdown },
+    };
+    const files = buildExportFiles(article);
+    const articleMd = files.find((file) => file.name === 'article.md')?.content ?? '';
+
+    expect(articleMd).not.toMatch(/[([]\s*F\d+\s*[)\]]/);
+    expect(articleMd).toContain('Слово слово, и.\n\nЕщё абзац.');
+    expect(article.version.articleMarkdown).toBe(articleMarkdown);
+  });
+
+  it('очищает метки и лишние пробелы отдельной утилитой', () => {
+    expect(stripFactLabels('До (F1) после, [F2] конец ( F10 ).')).toBe('До после, конец.');
+    expect(stripFactLabels('Без меток: обычный текст.')).toBe('Без меток: обычный текст.');
   });
 
   it('оговорка текста версии видна в article.md и в метаданных', () => {
