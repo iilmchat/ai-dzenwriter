@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # Первичный деплой и обновление DzenWriter на сервере.
-# Скрипт идемпотентен: повторный запуск пересобирает образы, применяет миграции
-# и перезапускает стек. Резервные копии не делает — они живут в отдельном cron.
+# Скрипт идемпотентен: повторный запуск загружает образы из GHCR, применяет
+# миграции и перезапускает стек. Резервные копии не делает — они живут в отдельном
+# systemd-таймере компании.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -20,6 +21,18 @@ fail() {
   exit 1
 }
 
+# Значение из .env. Переменная окружения имеет приоритет — как у docker compose.
+# CR отредактированного в Windows файла и обрамляющие кавычки отбрасываем.
+env_value() {
+  local key="$1"
+  local value
+  value="$(grep -E "^${key}=" .env 2>/dev/null | tail -n 1 | cut -d= -f2-)" || true
+  value="${value%$'\r'}"
+  value="${value%\"}"
+  value="${value#\"}"
+  printf '%s' "${value}"
+}
+
 if [[ ! -f .env ]]; then
   fail "не найден .env в ${ROOT_DIR}: скопируйте .env.example и заполните значения"
 fi
@@ -33,17 +46,16 @@ docker compose version >/dev/null 2>&1 ||
 command -v curl >/dev/null 2>&1 ||
   fail "curl не установлен: он нужен для проверки /health и /ready"
 
-# WEB_PORT читаем из .env, но переменная окружения имеет приоритет — так же,
-# как у docker compose. CR отредактированного в Windows файла отбрасываем.
-env_web_port="$(
-  grep -E '^WEB_PORT=' .env 2>/dev/null | tail -n 1 | cut -d= -f2-
-)" || true
-env_web_port="${env_web_port%$'\r'}"
-env_web_port="${env_web_port%\"}"
-env_web_port="${env_web_port#\"}"
-WEB_PORT="${WEB_PORT:-${env_web_port:-8080}}"
+WEB_PORT="${WEB_PORT:-$(env_value WEB_PORT)}"
+WEB_PORT="${WEB_PORT:-8080}"
 if [[ ! "${WEB_PORT}" =~ ^[0-9]+$ ]]; then
   fail "WEB_PORT должен быть числом, получено: ${WEB_PORT}"
+fi
+
+# Пароль по умолчанию из docker-compose.yml недопустим в продакшене.
+POSTGRES_PASSWORD="${POSTGRES_PASSWORD:-$(env_value POSTGRES_PASSWORD)}"
+if [[ -z "${POSTGRES_PASSWORD}" || "${POSTGRES_PASSWORD}" == "dzenwriter" ]]; then
+  fail "POSTGRES_PASSWORD не задан или равен небезопасному значению по умолчанию 'dzenwriter'"
 fi
 
 if git rev-parse --git-dir >/dev/null 2>&1; then
@@ -54,8 +66,8 @@ else
   log "Версия: git-репозиторий не найден, хеш коммита неизвестен"
 fi
 
-log "1/4 Сборка образов (docker compose build --pull)"
-docker compose build --pull
+log "1/4 Загрузка образов из GHCR (docker compose pull)"
+docker compose pull
 
 log "2/4 Применение миграций (docker compose run --rm migrate)"
 if ! docker compose run --rm migrate; then

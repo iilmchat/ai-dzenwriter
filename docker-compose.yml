@@ -1,5 +1,10 @@
 name: dzenwriter
 
+# Продакшен: образы публикуются в GHCR и загружаются scripts/deploy.sh через pull.
+# Локально можно собрать самому: docker compose build / docker compose up --build.
+# Для деплоя по digest задайте в .env полные ссылки:
+#   API_IMAGE=ghcr.io/iilmchat/ai-dzenwriter/api@sha256:...
+#   WEB_IMAGE=ghcr.io/iilmchat/ai-dzenwriter/web@sha256:...
 services:
   postgres:
     image: postgres:16-alpine
@@ -25,7 +30,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: api
-    image: dzenwriter-api:local
+    image: ${API_IMAGE:-ghcr.io/iilmchat/ai-dzenwriter/api:latest}
     command: ['node', 'node_modules/@dzenwriter/db/dist/migrate.js']
     environment:
       DATABASE_URL: postgres://${POSTGRES_USER:-dzenwriter}:${POSTGRES_PASSWORD:-dzenwriter}@postgres:5432/${POSTGRES_DB:-dzenwriter}
@@ -39,7 +44,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: api
-    image: dzenwriter-api:local
+    image: ${API_IMAGE:-ghcr.io/iilmchat/ai-dzenwriter/api:latest}
     init: true
     restart: unless-stopped
     environment:
@@ -85,7 +90,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: web
-    image: dzenwriter-web:local
+    image: ${WEB_IMAGE:-ghcr.io/iilmchat/ai-dzenwriter/web:latest}
     restart: unless-stopped
     ports:
       - '127.0.0.1:${WEB_PORT:-8080}:8080'
