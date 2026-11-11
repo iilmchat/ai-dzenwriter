@@ -1,6 +1,7 @@
-import type { ArticleDetail, ArticleItem, VersionDetail } from '@dzenwriter/shared';
+import type { ArticleDetail, ArticleDraft, ArticleItem, VersionDetail } from '@dzenwriter/shared';
 import { countBlockingChecks } from './article-rules';
 import type {
+  ArticleDraftRecord,
   ArticleView,
   LinkedFactRecord,
   PublicationRecord,
@@ -65,6 +66,25 @@ export function toVersionDetail(record: VersionContent): VersionDetail {
     generationRunId: record.generationRunId,
     createdAt: record.createdAt.toISOString(),
     createdBy: record.createdBy.login,
+  };
+}
+
+// Серверный черновик в ответе API: его редактор загружает вместо текущей версии.
+export function toArticleDraft(record: ArticleDraftRecord): ArticleDraft {
+  return {
+    articleId: record.articleId,
+    title: record.title,
+    articleMarkdown: record.articleMarkdown,
+    seoTitle: record.seoTitle,
+    tags: [...record.tags],
+    description: record.description,
+    imagePrompt: record.imagePrompt,
+    advertisingLabel: record.advertisingLabel,
+    disclaimerText: record.disclaimerText,
+    claims: record.claims.map((claim) => ({ ...claim, factIds: [...claim.factIds] })),
+    version: record.version,
+    updatedAt: record.updatedAt.toISOString(),
+    updatedBy: record.updatedBy,
   };
 }
 

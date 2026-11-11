@@ -2,7 +2,9 @@ import {
   articleDetailSchema,
   articleListResponseSchema,
   createArticleResponseSchema,
+  draftSchema,
   type ArticleDetail,
+  type ArticleDraft,
   type ArticleListResponse,
   type CreateArticleInput,
   type CreateArticleResponse,
@@ -11,6 +13,7 @@ import {
   type RegenerateFragmentInput,
   type RegenerateFragmentResponse,
   regenerateFragmentResponseSchema,
+  type SaveDraftInput,
   type TitleOptionsResponse,
   titleOptionsResponseSchema,
   type TransitionInput,
@@ -67,6 +70,15 @@ export function updateArticle(id: string, input: UpdateArticleInput): Promise<Ar
     method: 'PATCH',
     body: input,
     schema: articleDetailSchema,
+  });
+}
+
+// Серверный черновик: автосохранение правки без создания версии.
+export function saveDraft(articleId: string, body: SaveDraftInput): Promise<ArticleDraft> {
+  return apiRequest(`/api/v1/articles/${articleId}/draft`, {
+    method: 'PATCH',
+    body,
+    schema: draftSchema,
   });
 }
 

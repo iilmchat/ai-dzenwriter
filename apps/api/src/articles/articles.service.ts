@@ -11,6 +11,7 @@ import {
   FACT_TYPE_LABELS,
   policyAllowsFactType,
   type ArticleDetail,
+  type ArticleDraft,
   type ArticleFormat,
   type ArticleListQuery,
   type ArticleListResponse,
@@ -20,6 +21,7 @@ import {
   type CreateArticleResponse,
   type GenerationAvailability,
   type RegenerateFragmentInput,
+  type SaveDraftInput,
   type SaveVersionInput,
   type SaveVersionResponse,
   type StyleConfig,
@@ -75,6 +77,7 @@ import {
   type TransitionRule,
 } from './article-rules';
 import {
+  toArticleDraft,
   toArticleItem,
   toFactLink,
   toPublicationSummary,
@@ -95,6 +98,8 @@ const VERSIONS_SHOWN = 10;
 const VERSIONS_LISTED = 50;
 const VERSION_CONFLICT =
   'Материал изменился, пока вы его смотрели. Обновите страницу и повторите действие';
+const DRAFT_CONFLICT =
+  'Черновик изменился на другом устройстве. Загрузите последнюю правку и повторите действие';
 
 // Схема ответа для вариантов заголовка: ровно три строки без пояснений модели.
 const TITLES_JSON_SCHEMA = {
@@ -368,6 +373,50 @@ export class ArticlesService {
       throw new ConflictException(VERSION_CONFLICT);
     }
     return this.detail(actor, id);
+  }
+
+  // Серверный черновик: автор продолжает работу с любого устройства.
+  // Версия материала не меняется, пока правка не сохранена как версия.
+  async saveDraft(
+    actor: Actor,
+    articleId: string,
+    input: SaveDraftInput,
+    now: Date,
+  ): Promise<ArticleDraft> {
+    const view = await this.requireView(articleId);
+    if (actor.id !== view.ownerId && actor.role !== 'admin') {
+      throw new ForbiddenException('Сохранять черновик может автор материала или администратор');
+    }
+    if (view.status === 'published' || view.status === 'archived') {
+      throw new ConflictException('Опубликованный или архивный материал не меняет черновик');
+    }
+    const existing = await this.repository.getDraft(articleId);
+    if (existing !== undefined && existing.version > input.expectedVersion) {
+      throw new ConflictException(DRAFT_CONFLICT);
+    }
+
+    const saved = await this.repository.upsertDraft(
+      articleId,
+      {
+        expectedVersion: input.expectedVersion,
+        title: input.title,
+        articleMarkdown: input.articleMarkdown,
+        seoTitle: input.seoTitle,
+        tags: input.tags,
+        description: input.description,
+        imagePrompt: input.imagePrompt,
+        advertisingLabel: input.advertisingLabel,
+        disclaimerText: input.disclaimerText,
+        claims: input.claims,
+      },
+      actor.id,
+      now,
+    );
+    // Условие версии не выполнилось между чтением и записью: черновик уже новее.
+    if (!saved) {
+      throw new ConflictException(DRAFT_CONFLICT);
+    }
+    return toArticleDraft(saved);
   }
 
   // Бриф (план) статьи: LLM-вызов до генерации текста. Версия статьи не создаётся,
@@ -828,12 +877,13 @@ export class ArticlesService {
   private async detail(actor: Actor, id: string): Promise<ArticleDetail> {
     const view = await this.requireView(id);
     const context = await this.gateContext(view);
-    const [versions, reviews, publications, facts, confirmation] = await Promise.all([
+    const [versions, reviews, publications, facts, confirmation, draft] = await Promise.all([
       this.repository.listVersions(id, VERSIONS_SHOWN),
       this.repository.listReviews(id, VERSIONS_SHOWN),
       this.repository.listPublications(id),
       this.repository.listLinkedFacts(id),
       this.repository.findGenerationConfirmation(id),
+      this.repository.getDraft(id),
     ]);
     return {
       ...toArticleItem(view, this.styleName(view.styleId)),
@@ -850,6 +900,7 @@ export class ArticlesService {
       facts: facts.map(toFactLink),
       checks: [...(context.latest?.checks ?? [])],
       generation: this.generationAvailability(actor, view, context, confirmation !== undefined),
+      draft: draft !== undefined ? toArticleDraft(draft) : null,
     };
   }
 

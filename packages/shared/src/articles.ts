@@ -14,7 +14,7 @@ import {
   VERSION_ORIGINS,
 } from './enums';
 import { generationAvailabilitySchema } from './generation';
-import { versionCheckSchema } from './checks';
+import { versionCheckSchema, versionClaimSchema } from './checks';
 
 // Текст, параметры и факты меняются только до утверждения. Дальше материал возвращают в черновик.
 export const CONTENT_EDITABLE_STATUSES: readonly ArticleStatus[] = [
@@ -247,6 +247,47 @@ export const attachFactInputSchema = z.object({
 });
 export type AttachFactInput = z.infer<typeof attachFactInputSchema>;
 
+// Серверный черновик: последняя незафиксированная правка автора.
+// Версия увеличивается при каждом сохранении и защищает от перезаписи с другого устройства.
+export const draftSchema = z.object({
+  articleId: z.uuid(),
+  title: z.string(),
+  articleMarkdown: z.string(),
+  seoTitle: z.string(),
+  tags: z.array(z.string()),
+  description: z.string(),
+  imagePrompt: z.string(),
+  advertisingLabel: z.boolean(),
+  disclaimerText: z.string().nullable(),
+  claims: z.array(versionClaimSchema),
+  version: z.number().int().min(1),
+  updatedAt: z.iso.datetime(),
+  updatedBy: z.uuid(),
+});
+export type ArticleDraft = z.infer<typeof draftSchema>;
+
+// Тело PATCH /api/v1/articles/{id}/draft. Заголовок может быть пустым:
+// черновик сохраняется на любом шаге работы над текстом.
+export const saveDraftSchema = z.object({
+  expectedVersion: z.number().int().min(0),
+  title: z.string().trim().max(300, 'Заголовок длиннее 300 знаков'),
+  articleMarkdown: z.string(),
+  seoTitle: z.string().trim().max(300, 'SEO-заголовок длиннее 300 знаков'),
+  tags: z.array(z.string().trim().min(1)).max(20, 'Не больше 20 тегов'),
+  description: z.string().trim().max(1000, 'Описание длиннее 1000 знаков'),
+  imagePrompt: z.string().trim().max(1000, 'Промпт изображения длиннее 1000 знаков'),
+  advertisingLabel: z.boolean(),
+  disclaimerText: z.string().trim().max(2000, 'Оговорка длиннее 2000 знаков').nullable(),
+  claims: z.array(
+    z.object({
+      text: z.string(),
+      type: z.enum(['fact', 'hypothesis', 'opinion']),
+      factIds: z.array(z.string()),
+    }),
+  ),
+});
+export type SaveDraftInput = z.infer<typeof saveDraftSchema>;
+
 export const articleDetailSchema = articleItemSchema.extend({
   // Бриф (план) статьи до генерации текста: Markdown, nullable.
   brief: z.string().nullable(),
@@ -260,6 +301,9 @@ export const articleDetailSchema = articleItemSchema.extend({
   checks: z.array(versionCheckSchema),
   // Доступность запуска генерации с причиной. Правила считает сервер.
   generation: generationAvailabilitySchema,
+  // Незафиксированный черновик автора: пока он есть, редактор открывает его,
+  // а не текст текущей версии.
+  draft: draftSchema.nullable(),
 });
 export type ArticleDetail = z.infer<typeof articleDetailSchema>;
 

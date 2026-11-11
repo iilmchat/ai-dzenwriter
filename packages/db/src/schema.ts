@@ -304,6 +304,31 @@ export const articleVersions = pgTable(
   ],
 );
 
+// Серверный черновик: одна незафиксированная правка на материал. Версия нужна
+// для оптимистичной блокировки между устройствами автора.
+export const articleDrafts = pgTable('article_drafts', {
+  articleId: uuid('article_id')
+    .primaryKey()
+    .references(() => articles.id, { onDelete: 'cascade' }),
+  title: text('title').notNull(),
+  articleMarkdown: text('article_markdown').notNull(),
+  seoTitle: text('seo_title').notNull(),
+  tags: text('tags')
+    .array()
+    .notNull()
+    .default(sql`'{}'`),
+  description: text('description').notNull(),
+  imagePrompt: text('image_prompt').notNull(),
+  advertisingLabel: boolean('advertising_label').notNull().default(false),
+  disclaimerText: text('disclaimer_text'),
+  claims: jsonb('claims').notNull().default([]),
+  version: integer('version').notNull().default(1),
+  updatedAt: timestampTz('updated_at').notNull().defaultNow(),
+  updatedBy: uuid('updated_by')
+    .notNull()
+    .references(() => users.id),
+});
+
 export const reviews = pgTable(
   'reviews',
   {

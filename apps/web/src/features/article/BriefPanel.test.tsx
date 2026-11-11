@@ -47,6 +47,7 @@ function makeArticle(brief: string | null = null): ArticleDetail {
     facts: [],
     checks: [],
     generation: { allowed: true, reason: null, outOfFocus: false, confirmed: false },
+    draft: null,
   });
 }
 

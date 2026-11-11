@@ -77,6 +77,37 @@ export interface VersionContent extends VersionRecord {
   readonly generationRunId: string | null;
 }
 
+// Серверный черновик: незафиксированная правка материала. Один на материал.
+export interface ArticleDraftRecord {
+  readonly articleId: string;
+  readonly title: string;
+  readonly articleMarkdown: string;
+  readonly seoTitle: string;
+  readonly tags: readonly string[];
+  readonly description: string;
+  readonly imagePrompt: string;
+  readonly advertisingLabel: boolean;
+  readonly disclaimerText: string | null;
+  readonly claims: readonly VersionClaim[];
+  readonly version: number;
+  readonly updatedAt: Date;
+  readonly updatedBy: string;
+}
+
+export interface DraftInput {
+  // Версия черновика, которую видел автор: защита от перезаписи с другого устройства.
+  readonly expectedVersion: number;
+  readonly title: string;
+  readonly articleMarkdown: string;
+  readonly seoTitle: string;
+  readonly tags: readonly string[];
+  readonly description: string;
+  readonly imagePrompt: string;
+  readonly advertisingLabel: boolean;
+  readonly disclaimerText: string | null;
+  readonly claims: readonly VersionClaim[];
+}
+
 export interface ReviewRecord {
   readonly decision: ReviewDecision;
   readonly comment: string | null;
@@ -187,6 +218,15 @@ export interface ArticlesRepository {
     changes: ArticleChanges,
     now: Date,
   ): Promise<boolean>;
+  // undefined — версия в БД уже новее expectedVersion: черновик не перезаписан.
+  upsertDraft(
+    articleId: string,
+    input: DraftInput,
+    updatedBy: string,
+    now: Date,
+  ): Promise<ArticleDraftRecord | undefined>;
+  getDraft(articleId: string): Promise<ArticleDraftRecord | undefined>;
+  deleteDraft(articleId: string): Promise<void>;
   latestVersion(articleId: string): Promise<VersionRecord | undefined>;
   listVersions(articleId: string, limit: number): Promise<VersionRecord[]>;
   findVersion(articleId: string, number: number): Promise<VersionContent | undefined>;

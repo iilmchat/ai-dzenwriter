@@ -1,4 +1,5 @@
 import {
+  articleDrafts,
   articleFacts,
   articleGenerationConfirmations,
   articles,
@@ -29,9 +30,11 @@ import { emptyFactTotals, type FactTotals, type VersionCheck } from './article-r
 import { insertVersion, type NewVersionRecord } from './version-writer';
 import {
   type ArticleChanges,
+  type ArticleDraftRecord,
   type ArticleFilter,
   type ArticlesRepository,
   type ArticleView,
+  type DraftInput,
   type GenerationConfirmationRecord,
   type LinkedFactRecord,
   type NewArticle,
@@ -159,6 +162,57 @@ interface VersionSelectRow {
   generationRunId?: string | null;
 }
 
+const draftSelection = {
+  articleId: articleDrafts.articleId,
+  title: articleDrafts.title,
+  articleMarkdown: articleDrafts.articleMarkdown,
+  seoTitle: articleDrafts.seoTitle,
+  tags: articleDrafts.tags,
+  description: articleDrafts.description,
+  imagePrompt: articleDrafts.imagePrompt,
+  advertisingLabel: articleDrafts.advertisingLabel,
+  disclaimerText: articleDrafts.disclaimerText,
+  claims: articleDrafts.claims,
+  version: articleDrafts.version,
+  updatedAt: articleDrafts.updatedAt,
+  updatedBy: articleDrafts.updatedBy,
+};
+
+interface DraftSelectRow {
+  articleId: string;
+  title: string;
+  articleMarkdown: string;
+  seoTitle: string;
+  tags: string[];
+  description: string;
+  imagePrompt: string;
+  advertisingLabel: boolean;
+  disclaimerText: string | null;
+  claims: unknown;
+  version: number;
+  updatedAt: Date;
+  updatedBy: string;
+}
+
+// Поля черновика без articleId, версии и служебных отметок: их задаёт репозиторий.
+function draftValues(input: DraftInput) {
+  return {
+    title: input.title,
+    articleMarkdown: input.articleMarkdown,
+    seoTitle: input.seoTitle,
+    tags: [...input.tags],
+    description: input.description,
+    imagePrompt: input.imagePrompt,
+    advertisingLabel: input.advertisingLabel,
+    disclaimerText: input.disclaimerText,
+    claims: input.claims.map((claim) => ({
+      text: claim.text,
+      type: claim.type,
+      factIds: [...claim.factIds],
+    })),
+  };
+}
+
 export class DrizzleArticlesRepository implements ArticlesRepository {
   constructor(private readonly db: DbHandle) {}
 
@@ -271,6 +325,46 @@ export class DrizzleArticlesRepository implements ArticlesRepository {
       .where(and(eq(articles.id, id), eq(articles.version, expectedVersion)))
       .returning({ id: articles.id });
     return updated.length === 1;
+  }
+
+  // Черновик пишется одним upsert: условие версии проверяет сама БД,
+  // поэтому два устройства не перезапишут правки друг друга.
+  async upsertDraft(
+    articleId: string,
+    input: DraftInput,
+    updatedBy: string,
+    now: Date,
+  ): Promise<ArticleDraftRecord | undefined> {
+    const values = draftValues(input);
+    const [row] = await this.db
+      .insert(articleDrafts)
+      .values({ articleId, ...values, updatedBy, updatedAt: now })
+      .onConflictDoUpdate({
+        target: articleDrafts.articleId,
+        set: {
+          ...values,
+          updatedBy,
+          updatedAt: now,
+          version: sql`${articleDrafts.version} + 1`,
+        },
+        setWhere: lte(articleDrafts.version, input.expectedVersion),
+      })
+      .returning(draftSelection);
+    return row ? toArticleDraft(row) : undefined;
+  }
+
+  async getDraft(articleId: string): Promise<ArticleDraftRecord | undefined> {
+    const rows = await this.db
+      .select(draftSelection)
+      .from(articleDrafts)
+      .where(eq(articleDrafts.articleId, articleId))
+      .limit(1);
+    const [row] = rows;
+    return row ? toArticleDraft(row) : undefined;
+  }
+
+  async deleteDraft(articleId: string): Promise<void> {
+    await this.db.delete(articleDrafts).where(eq(articleDrafts.articleId, articleId));
   }
 
   async latestVersion(articleId: string): Promise<VersionRecord | undefined> {
@@ -596,6 +690,24 @@ function toArticleView(row: ArticleSelectRow): ArticleView {
         ? { id: row.reviewerId, login: row.reviewerLogin, name: row.reviewerName }
         : null,
     blockingChecks: countBlockingChecks(parseChecks(row.currentVersionChecks)),
+  };
+}
+
+function toArticleDraft(row: DraftSelectRow): ArticleDraftRecord {
+  return {
+    articleId: row.articleId,
+    title: row.title,
+    articleMarkdown: row.articleMarkdown,
+    seoTitle: row.seoTitle,
+    tags: row.tags,
+    description: row.description,
+    imagePrompt: row.imagePrompt,
+    advertisingLabel: row.advertisingLabel,
+    disclaimerText: row.disclaimerText,
+    claims: parseClaims(row.claims),
+    version: row.version,
+    updatedAt: row.updatedAt,
+    updatedBy: row.updatedBy,
   };
 }
 

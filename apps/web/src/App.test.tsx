@@ -151,6 +151,7 @@ const DETAIL = {
     outOfFocus: false,
     confirmed: false,
   },
+  draft: null,
 };
 
 // Полная версия в формате API: страница материала и редактор грузят её отдельно.
@@ -1224,12 +1225,13 @@ describe('приложение', () => {
     expect(screen.getByRole('button', { name: 'Сохранить версию' })).toBeTruthy();
   });
 
-  it('редактор автосохраняет черновик в localStorage', async () => {
+  it('редактор автосохраняет черновик на сервер', async () => {
     const version = versionDetail({
       number: 2,
       title: 'Заголовок статьи',
       articleMarkdown: 'Первый абзац.',
     });
+    const posted: Record<string, unknown>[] = [];
     stubApi({
       [`GET /api/v1/articles/${ARTICLE_ID}`]: () => json({ ...DETAIL, currentVersionNumber: 2 }),
       [`GET /api/v1/articles/${ARTICLE_ID}/versions`]: () =>
@@ -1248,6 +1250,25 @@ describe('приложение', () => {
       [`GET /api/v1/articles/${ARTICLE_ID}/versions/2`]: () => json(version),
       [`POST /api/v1/articles/${ARTICLE_ID}/versions/check`]: () =>
         json({ checks: version.checks, claims: version.claims }),
+      [`PATCH /api/v1/articles/${ARTICLE_ID}/draft`]: (init) => {
+        const body = JSON.parse(String(init?.body)) as Record<string, unknown>;
+        posted.push(body);
+        return json({
+          articleId: ARTICLE_ID,
+          title: body.title,
+          articleMarkdown: body.articleMarkdown,
+          seoTitle: body.seoTitle,
+          tags: body.tags,
+          description: body.description,
+          imagePrompt: body.imagePrompt,
+          advertisingLabel: body.advertisingLabel,
+          disclaimerText: body.disclaimerText,
+          claims: body.claims,
+          version: Number(body.expectedVersion) + 1,
+          updatedAt: '2026-10-22T11:00:00.000Z',
+          updatedBy: ADMIN.id,
+        });
+      },
     });
 
     renderAt(`/articles/${ARTICLE_ID}/edit`);
@@ -1257,17 +1278,18 @@ describe('приложение', () => {
       target: { value: 'Новый заголовок' },
     });
 
-    expect(await screen.findByText(/Черновик сохранён локально/)).toBeTruthy();
-    const stored = window.localStorage.getItem(`dzenwriter:draft:${ARTICLE_ID}`);
-    expect(stored).not.toBeNull();
-    expect(stored).toContain('Новый заголовок');
-
-    cleanup();
-    renderAt(`/articles/${ARTICLE_ID}/edit`);
-    await screen.findByRole('region', { name: 'Исходник' }, { timeout: 5000 });
-    expect(await screen.findByText(/Восстановлен локальный черновик/)).toBeTruthy();
-    expect((screen.getByLabelText('Заголовок') as HTMLInputElement).value).toBe('Новый заголовок');
-  });
+    expect(
+      await screen.findByText(/Черновик сохранён на сервере/, undefined, { timeout: 6000 }),
+    ).toBeTruthy();
+    expect(posted).toHaveLength(1);
+    expect(posted[0]).toMatchObject({
+      expectedVersion: 0,
+      title: 'Новый заголовок',
+      articleMarkdown: 'Первый абзац.',
+    });
+    // Локальное хранилище больше не используется: черновик живёт на сервере.
+    expect(window.localStorage.getItem(`dzenwriter:draft:${ARTICLE_ID}`)).toBeNull();
+  }, 12000);
 
   it('конфликт версий показывает diff и перезагружает серверную версию', async () => {
     const localVersion = versionDetail({

@@ -10,7 +10,7 @@ import {
 } from '@dzenwriter/shared';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { Link, useParams } from 'react-router';
-import { fetchArticle, generateTitleOptions, transitionArticle } from '../api/articles';
+import { fetchArticle, generateTitleOptions, saveDraft, transitionArticle } from '../api/articles';
 import { ApiError, errorMessage } from '../api/client';
 import { startGeneration } from '../api/generation';
 import { createReviewComment } from '../api/reviews';
@@ -96,14 +96,8 @@ const EMPTY_DRAFT: Draft = {
   claims: [],
 };
 
-const AUTOSAVE_DEBOUNCE_MS = 700;
-const DRAFT_STORAGE_PREFIX = 'dzenwriter:draft:';
-
-interface StoredDraft {
-  readonly draft: Draft;
-  readonly baseVersion: number;
-  readonly savedAt: string;
-}
+// Автосохранение на сервер: пауза в три секунды, чтобы не отправлять каждый символ.
+const AUTOSAVE_DEBOUNCE_MS = 3000;
 
 interface Conflict {
   readonly localDraft: Draft;
@@ -111,48 +105,6 @@ interface Conflict {
   readonly latestVersion: VersionDetail | null;
   readonly versions: readonly VersionSummary[];
   readonly showDiff: boolean;
-}
-
-function storageKey(articleId: string): string {
-  return `${DRAFT_STORAGE_PREFIX}${articleId}`;
-}
-
-function readStoredDraft(articleId: string): StoredDraft | null {
-  try {
-    const raw = window.localStorage.getItem(storageKey(articleId));
-    if (raw === null) {
-      return null;
-    }
-    const parsed = JSON.parse(raw) as Partial<StoredDraft>;
-    if (
-      typeof parsed.baseVersion !== 'number' ||
-      typeof parsed.savedAt !== 'string' ||
-      parsed.draft === undefined ||
-      typeof parsed.draft.title !== 'string' ||
-      typeof parsed.draft.articleMarkdown !== 'string'
-    ) {
-      return null;
-    }
-    return parsed as StoredDraft;
-  } catch {
-    return null;
-  }
-}
-
-function writeStoredDraft(articleId: string, stored: StoredDraft): void {
-  try {
-    window.localStorage.setItem(storageKey(articleId), JSON.stringify(stored));
-  } catch {
-    // Хранилище может быть недоступно в приватном режиме: редактор продолжает работать.
-  }
-}
-
-function clearStoredDraft(articleId: string): void {
-  try {
-    window.localStorage.removeItem(storageKey(articleId));
-  } catch {
-    // См. writeStoredDraft: отсутствие localStorage не блокирует редактирование.
-  }
 }
 
 // Редактор материала: исходник, предпросмотр в духе Дзена и панель проверок.
@@ -182,54 +134,41 @@ export function EditorPage() {
   const [commentsRefreshKey, setCommentsRefreshKey] = useState(0);
   const selectionRef = useRef<EditorRange | null>(null);
   const editor = useRef<MarkdownEditorHandle | null>(null);
+  // Версию черновика храним и в ref: ответ автосохранения приходит асинхронно,
+  // а следующий запрос должен взять уже новую версию.
+  const draftVersionRef = useRef(0);
+  const autosaveInFlight = useRef(false);
+  const pendingAutosave = useRef(false);
+  const draftRef = useRef(draft);
+  draftRef.current = draft;
 
-  const load = useCallback(
-    async (restoreLocalDraft = false) => {
-      const [detail, list] = await Promise.all([fetchArticle(id), fetchVersions(id)]);
-      const version =
-        detail.currentVersionNumber === null
-          ? null
-          : await fetchVersion(id, detail.currentVersionNumber);
-      const serverDraft = version === null ? EMPTY_DRAFT : toDraft(version);
+  const load = useCallback(async () => {
+    const [detail, list] = await Promise.all([fetchArticle(id), fetchVersions(id)]);
+    const version =
+      detail.currentVersionNumber === null
+        ? null
+        : await fetchVersion(id, detail.currentVersionNumber);
+    // Пока серверный черновик не зафиксирован версией, редактор открывает его.
+    const versionDraft = version === null ? EMPTY_DRAFT : toDraft(version);
+    const openDraft = detail.draft === null ? versionDraft : toDraft(detail.draft);
+    const nextDraftVersion = detail.draft?.version ?? 0;
 
-      setArticle(detail);
-      setVersions(list.items);
-      setExpectedVersion(detail.version);
-      setSavedDraft(serverDraft);
-      setChecks(version?.checks ?? []);
-
-      if (!restoreLocalDraft) {
-        setDraft(serverDraft);
-        clearStoredDraft(id);
-        setAutosavedAt(undefined);
-        return;
-      }
-
-      const stored = readStoredDraft(id);
-      if (stored === null) {
-        setDraft(serverDraft);
-        return;
-      }
-      if (stored.baseVersion === detail.version) {
-        setDraft(stored.draft);
-        setNotice(`Восстановлен локальный черновик от ${formatDateTime(stored.savedAt)}.`);
-        return;
-      }
-      setDraft(serverDraft);
-      setConflict({
-        localDraft: stored.draft,
-        latestArticle: detail,
-        latestVersion: version,
-        versions: list.items,
-        showDiff: false,
-      });
-    },
-    [id],
-  );
+    setArticle(detail);
+    setVersions(list.items);
+    setExpectedVersion(detail.version);
+    setSavedDraft(versionDraft);
+    setDraft(openDraft);
+    setChecks(version?.checks ?? []);
+    draftVersionRef.current = nextDraftVersion;
+    setAutosavedAt(detail.draft === null ? undefined : new Date(detail.draft.updatedAt));
+    if (detail.draft !== null) {
+      setNotice(`Загружен черновик с сервера от ${formatDateTime(detail.draft.updatedAt)}.`);
+    }
+  }, [id]);
 
   useEffect(() => {
     let active = true;
-    load(true)
+    load()
       .then(() => {
         if (active) {
           setDraftReady(true);
@@ -251,21 +190,7 @@ export function EditorPage() {
       return;
     }
     const timer = setTimeout(() => {
-      checkVersion(id, {
-        title: draft.title,
-        articleMarkdown: draft.articleMarkdown,
-        seoTitle: draft.seoTitle,
-        tags: [...draft.tags],
-        description: draft.description,
-        imagePrompt: draft.imagePrompt,
-        advertisingLabel: draft.advertisingLabel,
-        disclaimerText: draft.disclaimerText,
-        claims: draft.claims.map((claim) => ({
-          text: claim.text,
-          type: claim.type,
-          factIds: [...claim.factIds],
-        })),
-      }).then(
+      checkVersion(id, draftFields(draft)).then(
         (response: CheckVersionResponse) => setChecks(response.checks),
         () => undefined,
       );
@@ -286,27 +211,73 @@ export function EditorPage() {
     canComment || (user !== undefined && article !== null && user.id === article.owner.id);
   const dirty = draftReady && JSON.stringify(draft) !== JSON.stringify(savedDraft);
 
-  // Автосохранение локальное: версии создаёт только кнопка «Сохранить версию»,
+  // Конфликт версий: показываем локальную правку рядом с последней версией с сервера.
+  const openConflict = useCallback(
+    async (localDraft: Draft) => {
+      try {
+        const [latestArticle, list] = await Promise.all([fetchArticle(id), fetchVersions(id)]);
+        const latestVersion =
+          latestArticle.currentVersionNumber === null
+            ? null
+            : await fetchVersion(id, latestArticle.currentVersionNumber);
+        setConflict({
+          localDraft,
+          latestArticle,
+          latestVersion,
+          versions: list.items,
+          showDiff: false,
+        });
+      } catch (cause) {
+        setError(errorMessage(cause));
+      }
+    },
+    [id],
+  );
+
+  // Отправка черновика: берём самый свежий текст из ref, чтобы ответ предыдущего
+  // запроса не отправил устаревшую правку.
+  const saveDraftNow = useCallback(() => {
+    if (autosaveInFlight.current) {
+      pendingAutosave.current = true;
+      return;
+    }
+    autosaveInFlight.current = true;
+    saveDraft(id, {
+      expectedVersion: draftVersionRef.current,
+      ...draftFields(draftRef.current),
+    })
+      .then((saved) => {
+        draftVersionRef.current = saved.version;
+        setAutosavedAt(new Date(saved.updatedAt));
+      })
+      .catch((cause: unknown) => {
+        if (cause instanceof ApiError && cause.status === 409) {
+          void openConflict(draftRef.current);
+        } else {
+          setError(errorMessage(cause));
+        }
+      })
+      .finally(() => {
+        autosaveInFlight.current = false;
+        if (pendingAutosave.current) {
+          pendingAutosave.current = false;
+          window.setTimeout(saveDraftNow, 0);
+        }
+      });
+  }, [id, openConflict]);
+
+  // Автосохранение на сервер: версии создаёт только кнопка «Сохранить версию»,
   // иначе каждое нажатие клавиши плодило бы записи в истории.
   useEffect(() => {
     if (!draftReady || !article || !canEdit || conflict !== undefined) {
       return;
     }
     if (!dirty) {
-      clearStoredDraft(id);
-      setAutosavedAt(undefined);
       return;
     }
-    const timer = window.setTimeout(() => {
-      writeStoredDraft(id, {
-        draft,
-        baseVersion: expectedVersion,
-        savedAt: new Date().toISOString(),
-      });
-      setAutosavedAt(new Date());
-    }, AUTOSAVE_DEBOUNCE_MS);
+    const timer = window.setTimeout(saveDraftNow, AUTOSAVE_DEBOUNCE_MS);
     return () => window.clearTimeout(timer);
-  }, [article, canEdit, conflict, dirty, draft, expectedVersion, id, draftReady]);
+  }, [article, canEdit, conflict, dirty, draft, draftReady, saveDraftNow]);
 
   useEffect(() => {
     if (!dirty && conflict === undefined) {
@@ -330,32 +301,21 @@ export function EditorPage() {
     try {
       const response = await saveVersion(id, {
         expectedVersion,
-        title: draft.title,
-        articleMarkdown: draft.articleMarkdown,
-        seoTitle: draft.seoTitle,
-        tags: [...draft.tags],
-        description: draft.description,
-        imagePrompt: draft.imagePrompt,
-        advertisingLabel: draft.advertisingLabel,
-        disclaimerText: draft.disclaimerText,
-        claims: draft.claims.map((claim) => ({
-          text: claim.text,
-          type: claim.type,
-          factIds: [...claim.factIds],
-        })),
+        ...draftFields(draft),
       });
       const next = toDraft(response.version);
       setDraft(next);
       setSavedDraft(next);
       setChecks(response.version.checks);
       setExpectedVersion(response.article.version);
-      clearStoredDraft(id);
+      // Версия зафиксировала правки: сервер удалил черновик, локальная версия сбрасывается.
+      draftVersionRef.current = 0;
       setAutosavedAt(undefined);
       setNotice(`Сохранена версия ${response.version.number}.`);
       await load();
     } catch (cause) {
       if (cause instanceof ApiError && cause.status === 409) {
-        await openConflict();
+        await openConflict(draft);
       } else {
         setError(errorMessage(cause));
       }
@@ -364,38 +324,26 @@ export function EditorPage() {
     }
   }
 
-  async function openConflict() {
-    try {
-      const [latestArticle, list] = await Promise.all([fetchArticle(id), fetchVersions(id)]);
-      const latestVersion =
-        latestArticle.currentVersionNumber === null
-          ? null
-          : await fetchVersion(id, latestArticle.currentVersionNumber);
-      setConflict({
-        localDraft: draft,
-        latestArticle,
-        latestVersion,
-        versions: list.items,
-        showDiff: false,
-      });
-    } catch (cause) {
-      setError(errorMessage(cause));
-    }
-  }
-
   function reloadLatest() {
     if (!conflict) {
       return;
     }
-    const next = conflict.latestVersion === null ? EMPTY_DRAFT : toDraft(conflict.latestVersion);
+    const latestDraft = conflict.latestArticle.draft;
+    const next =
+      latestDraft !== null
+        ? toDraft(latestDraft)
+        : conflict.latestVersion === null
+          ? EMPTY_DRAFT
+          : toDraft(conflict.latestVersion);
+    const nextDraftVersion = latestDraft?.version ?? 0;
     setArticle(conflict.latestArticle);
     setVersions([...conflict.versions]);
     setDraft(next);
-    setSavedDraft(next);
+    setSavedDraft(conflict.latestVersion === null ? EMPTY_DRAFT : toDraft(conflict.latestVersion));
     setChecks(conflict.latestVersion?.checks ?? []);
     setExpectedVersion(conflict.latestArticle.version);
-    clearStoredDraft(id);
-    setAutosavedAt(undefined);
+    draftVersionRef.current = nextDraftVersion;
+    setAutosavedAt(latestDraft === null ? undefined : new Date(latestDraft.updatedAt));
     setConflict(undefined);
     setError(undefined);
     setNotice('Загружена последняя версия с сервера.');
@@ -435,7 +383,7 @@ export function EditorPage() {
       setSavedDraft(next);
       setChecks(response.version.checks);
       setExpectedVersion(response.article.version);
-      clearStoredDraft(id);
+      draftVersionRef.current = 0;
       setAutosavedAt(undefined);
       setNotice(`Версия ${number} восстановлена как версия ${response.version.number}.`);
       await load();
@@ -650,7 +598,7 @@ export function EditorPage() {
             : dirty
               ? autosavedAt === undefined
                 ? 'Есть несохранённые изменения'
-                : `Черновик сохранён локально ${formatDateTime(autosavedAt.toISOString())}`
+                : `Черновик сохранён на сервере ${formatDateTime(autosavedAt.toISOString())}`
               : 'Все изменения сохранены'}
         </p>
       </header>
@@ -892,20 +840,52 @@ export function EditorPage() {
   );
 }
 
-function toDraft(version: VersionDetail): Draft {
+// Поля, общие для версии и серверного черновика: из них собирается состояние редактора.
+interface DraftSource {
+  readonly title: string;
+  readonly articleMarkdown: string;
+  readonly seoTitle: string;
+  readonly tags: readonly string[];
+  readonly description: string;
+  readonly imagePrompt: string;
+  readonly advertisingLabel: boolean;
+  readonly disclaimerText: string | null;
+  readonly claims: readonly ClaimDraft[];
+}
+
+function toDraft(source: DraftSource): Draft {
   return {
-    title: version.title,
-    articleMarkdown: version.articleMarkdown,
-    seoTitle: version.seoTitle,
-    tags: version.tags,
-    description: version.description,
-    imagePrompt: version.imagePrompt,
-    advertisingLabel: version.advertisingLabel,
-    disclaimerText: version.disclaimerText,
-    claims: version.claims.map((claim) => ({
+    title: source.title,
+    articleMarkdown: source.articleMarkdown,
+    seoTitle: source.seoTitle,
+    tags: source.tags,
+    description: source.description,
+    imagePrompt: source.imagePrompt,
+    advertisingLabel: source.advertisingLabel,
+    disclaimerText: source.disclaimerText,
+    claims: source.claims.map((claim) => ({
       text: claim.text,
       type: claim.type as ClaimType,
       factIds: claim.factIds,
+    })),
+  };
+}
+
+// Тело сохранения версии и черновика: поля одинаковые, у версии добавляется expectedVersion.
+function draftFields(draft: Draft) {
+  return {
+    title: draft.title,
+    articleMarkdown: draft.articleMarkdown,
+    seoTitle: draft.seoTitle,
+    tags: [...draft.tags],
+    description: draft.description,
+    imagePrompt: draft.imagePrompt,
+    advertisingLabel: draft.advertisingLabel,
+    disclaimerText: draft.disclaimerText,
+    claims: draft.claims.map((claim) => ({
+      text: claim.text,
+      type: claim.type,
+      factIds: [...claim.factIds],
     })),
   };
 }

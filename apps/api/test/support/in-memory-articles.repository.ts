@@ -4,9 +4,11 @@ import type { AuditRecord } from '../../src/audit/audit.record';
 import { emptyFactTotals, type FactTotals } from '../../src/articles/article-rules';
 import type {
   ArticleChanges,
+  ArticleDraftRecord,
   ArticleFilter,
   ArticleRecord,
   ArticlesRepository,
+  DraftInput,
   ArticleView,
   GenerationConfirmationRecord,
   LinkedFactRecord,
@@ -59,6 +61,7 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
     string,
     { readonly confirmedBy: string; readonly confirmedAt: Date }
   >();
+  readonly drafts = new Map<string, ArticleDraftRecord>();
   readonly audit: AuditRecord[] = [];
   readonly clock = new Date('2026-10-22T10:00:00Z');
 
@@ -180,6 +183,43 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
     return true;
   }
 
+  async upsertDraft(
+    articleId: string,
+    input: DraftInput,
+    updatedBy: string,
+    now: Date,
+  ): Promise<ArticleDraftRecord | undefined> {
+    const existing = this.drafts.get(articleId);
+    if (existing !== undefined && existing.version > input.expectedVersion) {
+      return undefined;
+    }
+    const record: ArticleDraftRecord = {
+      articleId,
+      title: input.title,
+      articleMarkdown: input.articleMarkdown,
+      seoTitle: input.seoTitle,
+      tags: [...input.tags],
+      description: input.description,
+      imagePrompt: input.imagePrompt,
+      advertisingLabel: input.advertisingLabel,
+      disclaimerText: input.disclaimerText,
+      claims: [...input.claims],
+      version: existing === undefined ? 1 : existing.version + 1,
+      updatedAt: now,
+      updatedBy,
+    };
+    this.drafts.set(articleId, record);
+    return record;
+  }
+
+  async getDraft(articleId: string): Promise<ArticleDraftRecord | undefined> {
+    return this.drafts.get(articleId);
+  }
+
+  async deleteDraft(articleId: string): Promise<void> {
+    this.drafts.delete(articleId);
+  }
+
   async latestVersion(articleId: string): Promise<VersionRecord | undefined> {
     const list = this.versions.get(articleId) ?? [];
     return list.reduce<VersionRecord | undefined>(
@@ -250,6 +290,8 @@ export class InMemoryArticlesRepository implements ArticlesRepository {
       version: article.version + 1,
       updatedAt: now,
     });
+    // Правки зафиксированы версией: серверный черновик больше не нужен.
+    this.drafts.delete(version.articleId);
     return number;
   }
 

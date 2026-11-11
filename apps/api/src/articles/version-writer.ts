@@ -1,4 +1,4 @@
-import { articleVersions, articles } from '@dzenwriter/db';
+import { articleDrafts, articleVersions, articles } from '@dzenwriter/db';
 import type { VersionClaim, VersionCheck, VersionOrigin } from '@dzenwriter/shared';
 import { eq, sql } from 'drizzle-orm';
 import type { DbHandle } from '../database/db-handle';
@@ -87,6 +87,9 @@ export async function insertVersion(
       updatedAt: now,
     })
     .where(eq(articles.id, version.articleId));
+
+  // Правки зафиксированы версией: серверный черновик больше не нужен.
+  await db.delete(articleDrafts).where(eq(articleDrafts.articleId, version.articleId));
 
   return number;
 }

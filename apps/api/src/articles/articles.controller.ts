@@ -15,6 +15,7 @@ import {
 } from '@nestjs/common';
 import {
   type ArticleDetail,
+  type ArticleDraft,
   type ArticleListQuery,
   type ArticleListResponse,
   articleListQuerySchema,
@@ -32,6 +33,8 @@ import {
   type RegenerateFragmentInput,
   type RegenerateFragmentResponse,
   regenerateFragmentSchema,
+  type SaveDraftInput,
+  saveDraftSchema,
   saveVersionInputSchema,
   type SaveVersionInput,
   type SaveVersionResponse,
@@ -85,6 +88,16 @@ export class ArticlesController {
     @AuthUser() actor: SessionUser,
   ): Promise<ArticleDetail> {
     return this.articles.update(actor, id, body, new Date());
+  }
+
+  // Серверный черновик: автосохранение правки без создания версии.
+  @Patch(':id/draft')
+  saveDraft(
+    @Param('id', articleIdPipe()) id: string,
+    @Body(new ZodValidationPipe(saveDraftSchema)) body: SaveDraftInput,
+    @AuthUser() actor: SessionUser,
+  ): Promise<ArticleDraft> {
+    return this.articles.saveDraft(actor, id, body, new Date());
   }
 
   // Генерация брифа (плана) статьи до генерации основного текста.

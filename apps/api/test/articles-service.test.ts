@@ -513,6 +513,119 @@ describe('ручное сохранение версии и откат', () => {
   });
 });
 
+describe('серверные черновики', () => {
+  const DRAFT_BODY = {
+    title: 'Черновик заголовка',
+    articleMarkdown: 'Текст черновика, ещё не версия.',
+    seoTitle: 'SEO черновика',
+    tags: ['ии'],
+    description: 'Описание черновика',
+    imagePrompt: 'Обложка черновика',
+    advertisingLabel: false,
+    disclaimerText: null,
+    claims: [],
+  };
+
+  it('сохраняет черновик автора и увеличивает его версию', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    const first = await harness.service.saveDraft(
+      harness.actors.owner,
+      article.id,
+      { ...DRAFT_BODY, expectedVersion: 0 },
+      NOW,
+    );
+    expect(first.version).toBe(1);
+    expect(first.updatedBy).toBe(harness.actors.owner.id);
+
+    const second = await harness.service.saveDraft(
+      harness.actors.owner,
+      article.id,
+      { ...DRAFT_BODY, articleMarkdown: 'Обновлённый текст.', expectedVersion: first.version },
+      NOW,
+    );
+    expect(second.version).toBe(2);
+
+    const detail = await harness.service.get(harness.actors.owner, article.id);
+    expect(detail.draft).toMatchObject({
+      articleId: article.id,
+      articleMarkdown: 'Обновлённый текст.',
+      version: 2,
+    });
+    // Версия материала не меняется: черновик ещё не зафиксирован.
+    expect(detail.version).toBe(article.version);
+    expect(harness.repo.versions.get(article.id) ?? []).toHaveLength(0);
+  });
+
+  it('устаревшая версия черновика даёт 409', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    await harness.service.saveDraft(
+      harness.actors.owner,
+      article.id,
+      { ...DRAFT_BODY, expectedVersion: 0 },
+      NOW,
+    );
+
+    await expect(
+      harness.service.saveDraft(
+        harness.actors.owner,
+        article.id,
+        { ...DRAFT_BODY, articleMarkdown: 'Правка со второго устройства.', expectedVersion: 0 },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(harness.repo.drafts.get(article.id)?.articleMarkdown).toBe(DRAFT_BODY.articleMarkdown);
+  });
+
+  it('чужой пользователь и опубликованный материал не принимают черновик', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+
+    await expect(
+      harness.service.saveDraft(
+        harness.actors.stranger,
+        article.id,
+        { ...DRAFT_BODY, expectedVersion: 0 },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+
+    harness.repo.setStatus(article.id, 'published');
+    await expect(
+      harness.service.saveDraft(
+        harness.actors.owner,
+        article.id,
+        { ...DRAFT_BODY, expectedVersion: 0 },
+        NOW,
+      ),
+    ).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  it('создание версии удаляет черновик', async () => {
+    const harness = setup();
+    const article = await createArticle(harness);
+    await harness.service.saveDraft(
+      harness.actors.owner,
+      article.id,
+      { ...DRAFT_BODY, expectedVersion: 0 },
+      NOW,
+    );
+
+    await harness.service.saveVersion(
+      harness.actors.owner,
+      article.id,
+      { ...DRAFT_BODY, expectedVersion: article.version },
+      NOW,
+    );
+
+    expect(harness.repo.drafts.has(article.id)).toBe(false);
+    const detail = await harness.service.get(harness.actors.owner, article.id);
+    expect(detail.draft).toBeNull();
+  });
+});
+
 describe('подтверждение проверок', () => {
   const BLOCKING = {
     id: 'numbers_must_map_to_facts',
