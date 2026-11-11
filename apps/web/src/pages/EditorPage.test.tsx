@@ -1,10 +1,16 @@
-import type { ArticleDetail, ArticleDraft, VersionCheck, VersionDetail } from '@dzenwriter/shared';
+import type {
+  ArticleDetail,
+  ArticleDraft,
+  SaveVersionResponse,
+  VersionCheck,
+  VersionDetail,
+} from '@dzenwriter/shared';
 import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes } from 'react-router';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { confirmCheck, fetchArticle, saveDraft } from '../api/articles';
 import { ApiError } from '../api/client';
-import { checkVersion, fetchVersion, fetchVersions } from '../api/versions';
+import { checkVersion, fetchVersion, fetchVersions, saveVersion } from '../api/versions';
 import { EditorPage, findCheckIndex, mergeConfirmedChecks } from './EditorPage';
 
 const USER = vi.hoisted(() => ({
@@ -73,6 +79,7 @@ const mockedFetchArticle = vi.mocked(fetchArticle);
 const mockedFetchVersions = vi.mocked(fetchVersions);
 const mockedFetchVersion = vi.mocked(fetchVersion);
 const mockedSaveDraft = vi.mocked(saveDraft);
+const mockedSaveVersion = vi.mocked(saveVersion);
 const mockedCheckVersion = vi.mocked(checkVersion);
 const mockedConfirmCheck = vi.mocked(confirmCheck);
 
@@ -196,6 +203,27 @@ describe('редактор и серверные черновики', () => {
         expectedVersion: DRAFT.version,
         articleMarkdown: 'Новая правка',
       }),
+    );
+  });
+
+  it('отправляет маркировку рекламы при сохранении версии', async () => {
+    renderEditor();
+    const checkbox = (await screen.findByLabelText(/маркировку рекламы/)) as HTMLInputElement;
+
+    fireEvent.click(checkbox);
+    expect(checkbox.checked).toBe(true);
+
+    mockedSaveVersion.mockResolvedValue({
+      version: { ...VERSION, number: 4, advertisingLabel: true },
+      article: { id: ARTICLE_ID, version: 8, currentVersionNumber: 4 },
+    } as SaveVersionResponse);
+    fireEvent.click(screen.getByRole('button', { name: 'Сохранить версию' }));
+
+    await waitFor(() =>
+      expect(mockedSaveVersion).toHaveBeenCalledWith(
+        ARTICLE_ID,
+        expect.objectContaining({ advertisingLabel: true }),
+      ),
     );
   });
 });

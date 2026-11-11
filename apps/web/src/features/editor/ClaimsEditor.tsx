@@ -86,12 +86,14 @@ export interface EditorMetadataProps {
   readonly tags: readonly string[];
   readonly description: string;
   readonly imagePrompt: string;
+  readonly advertisingLabel: boolean;
   readonly seoTitleMax: number;
   readonly onChange: (fields: {
     readonly seoTitle: string;
     readonly tags: readonly string[];
     readonly description: string;
     readonly imagePrompt: string;
+    readonly advertisingLabel: boolean;
   }) => void;
 }
 
@@ -101,6 +103,7 @@ export function EditorMetadata({
   tags,
   description,
   imagePrompt,
+  advertisingLabel,
   seoTitleMax,
   onChange,
 }: EditorMetadataProps) {
@@ -116,7 +119,13 @@ export function EditorMetadata({
             value={seoTitle}
             maxLength={300}
             onChange={(event) =>
-              onChange({ seoTitle: event.target.value, tags, description, imagePrompt })
+              onChange({
+                seoTitle: event.target.value,
+                tags,
+                description,
+                imagePrompt,
+                advertisingLabel,
+              })
             }
           />
           <span className="text-xs text-on-surface-variant">
@@ -139,6 +148,7 @@ export function EditorMetadata({
                   .filter((tag) => tag.length > 0),
                 description,
                 imagePrompt,
+                advertisingLabel,
               })
             }
           />
@@ -153,7 +163,13 @@ export function EditorMetadata({
             value={description}
             maxLength={1000}
             onChange={(event) =>
-              onChange({ seoTitle, tags, description: event.target.value, imagePrompt })
+              onChange({
+                seoTitle,
+                tags,
+                description: event.target.value,
+                imagePrompt,
+                advertisingLabel,
+              })
             }
           />
         </div>
@@ -166,10 +182,32 @@ export function EditorMetadata({
             value={imagePrompt}
             maxLength={1000}
             onChange={(event) =>
-              onChange({ seoTitle, tags, description, imagePrompt: event.target.value })
+              onChange({
+                seoTitle,
+                tags,
+                description,
+                imagePrompt: event.target.value,
+                advertisingLabel,
+              })
             }
           />
         </div>
+        <label className="mt-2 flex items-start gap-2 text-sm md:col-span-2">
+          <input
+            type="checkbox"
+            checked={advertisingLabel}
+            onChange={(event) =>
+              onChange({
+                seoTitle,
+                tags,
+                description,
+                imagePrompt,
+                advertisingLabel: event.target.checked,
+              })
+            }
+          />
+          <span>Поставить маркировку рекламы (обязательно для описания своих продуктов)</span>
+        </label>
       </div>
     </div>
   );

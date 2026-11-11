@@ -781,6 +781,7 @@ export function EditorPage() {
         tags={draft.tags}
         description={draft.description}
         imagePrompt={draft.imagePrompt}
+        advertisingLabel={draft.advertisingLabel}
         seoTitleMax={70}
         onChange={(fields) => setDraft({ ...draft, ...fields })}
       />
