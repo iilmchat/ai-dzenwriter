@@ -53,12 +53,14 @@ const FACT_EXTRACTION_JSON_SCHEMA: Record<string, unknown> = {
       items: {
         type: 'object',
         additionalProperties: false,
-        required: ['text', 'type'],
+        // Strict structured output: каждое поле из properties обязано быть в required.
+        // Необязательные по контракту поля помечаем nullable, а не пропускаем в required.
+        required: ['text', 'type', 'source_url', 'source_published_at'],
         properties: {
           text: { type: 'string' },
           type: { type: 'string', enum: ['news_source', 'company_fact'] },
-          source_url: { type: 'string' },
-          source_published_at: { type: 'string' },
+          source_url: { type: ['string', 'null'] },
+          source_published_at: { type: ['string', 'null'] },
         },
       },
     },

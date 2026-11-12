@@ -17,6 +17,12 @@ export interface OpenAiProviderOptions {
 }
 
 interface ChatCompletionResponse {
+  // RouterAI может вернуть HTTP 200 с телом-ошибкой вместо 4xx.
+  readonly error?: {
+    readonly message?: unknown;
+    readonly code?: unknown;
+    readonly type?: unknown;
+  };
   readonly choices?: readonly {
     readonly message?: { readonly content?: unknown };
   }[];
@@ -78,6 +84,10 @@ export class OpenAiCompatibleProvider implements LlmProvider {
     }
 
     const payload = await this.readJson(response);
+    if (payload.error !== undefined && payload.error !== null) {
+      // Сообщение провайдера помогает диагностике: без него видно только «ответ без текста».
+      throw new LlmProviderError('invalid_response', providerErrorMessage(payload.error));
+    }
     const content = extractContent(payload);
     if (content === null) {
       throw new LlmProviderError('invalid_response', 'Провайдер вернул ответ без текста');
@@ -125,6 +135,17 @@ export class OpenAiCompatibleProvider implements LlmProvider {
       throw new LlmProviderError('invalid_response', 'Провайдер вернул ответ не в JSON');
     }
   }
+}
+
+// Короткое описание ошибки провайдера для логов: тип, код и текст, без тела запроса.
+function providerErrorMessage(error: NonNullable<ChatCompletionResponse['error']>): string {
+  const code = [error.type, error.code]
+    .filter((value) => value !== undefined && value !== null && String(value).length > 0)
+    .map((value) => String(value))
+    .join('/');
+  const message = typeof error.message === 'string' ? error.message.trim().slice(0, 300) : '';
+  const prefix = code.length > 0 ? `Провайдер вернул ошибку ${code}` : 'Провайдер вернул ошибку';
+  return message.length > 0 ? `${prefix}: ${message}` : prefix;
 }
 
 // Content бывает строкой, а у некоторых провайдеров — массивом частей.
