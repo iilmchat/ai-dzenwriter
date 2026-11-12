@@ -1,7 +1,8 @@
 import path from 'node:path';
+import { UnprocessableEntityException } from '@nestjs/common';
 import type { VersionCheck } from '@dzenwriter/shared';
 import { describe, expect, it, vi } from 'vitest';
-import { AutopilotService } from '../src/autopilot/autopilot.service';
+import { AutopilotService, INVALID_FACTS_FORMAT_MESSAGE } from '../src/autopilot/autopilot.service';
 import { ArticlesService } from '../src/articles/articles.service';
 import { ChecksService } from '../src/checks/checks.service';
 import { loadAppConfig, resolveConfigDir } from '../src/config/app-config';
@@ -149,6 +150,88 @@ describe('автопилот: извлечение фактов', () => {
     const usageRuns = await harness.runs.listRuns(result.articleId, 10);
     expect(usageRuns).toHaveLength(1);
     expect(usageRuns[0]?.promptVersion.startsWith('autopilot-extract:')).toBe(true);
+  });
+
+  it('извлекает факты из ответа в markdown-обёртке с текстом вокруг', async () => {
+    const provider = new MockLlmProvider({
+      steps: [
+        {
+          kind: 'content',
+          content: [
+            'Вот факты, которые удалось извлечь:',
+            '```json',
+            JSON.stringify({
+              facts: [
+                {
+                  text: 'Платформа запущена 1 ноября 2026 года.',
+                  type: 'news_source',
+                  source_url: 'https://example.com/news',
+                  source_published_at: '2026-10-30',
+                },
+                { text: 'Компания «Ромашка» выпустила платформу.', type: 'company_fact' },
+              ],
+            }),
+            '```',
+            'Готово.',
+          ].join('\n'),
+        },
+      ],
+    });
+    const harness = setup(provider);
+
+    const result = await harness.service.extractFacts(harness.owner, {
+      rawTask: RAW_TASK,
+      topic: 'Запуск платформы «Ромашка»',
+    });
+
+    expect(result.factsCreated).toBe(2);
+    expect(provider.requests).toHaveLength(1);
+    const linked = await harness.articles.listLinkedFacts(result.articleId);
+    expect(linked[0]?.sourceUrl).toBe('https://example.com/news');
+  });
+
+  it('повторяет запрос один раз и принимает исправленный ответ', async () => {
+    const provider = new MockLlmProvider({
+      steps: [
+        { kind: 'content', content: 'Я не могу извлечь факты из этого задания.' },
+        {
+          kind: 'content',
+          content: JSON.stringify({
+            facts: [{ text: 'Компания выпустила платформу.', type: 'company_fact' }],
+          }),
+        },
+      ],
+    });
+    const harness = setup(provider);
+
+    const result = await harness.service.extractFacts(harness.owner, {
+      rawTask: RAW_TASK,
+      topic: 'Запуск платформы «Ромашка»',
+    });
+
+    expect(result.factsCreated).toBe(1);
+    expect(provider.requests).toHaveLength(2);
+  });
+
+  it('возвращает 422, если модель дважды ответила текстом вместо JSON', async () => {
+    const provider = new MockLlmProvider({
+      steps: [
+        { kind: 'content', content: 'Я не могу извлечь факты из этого задания.' },
+        { kind: 'content', content: 'Я не могу извлечь факты из этого задания.' },
+      ],
+    });
+    const harness = setup(provider);
+
+    const error: unknown = await harness.service
+      .extractFacts(harness.owner, {
+        rawTask: RAW_TASK,
+        topic: 'Запуск платформы «Ромашка»',
+      })
+      .catch((reason: unknown) => reason);
+
+    expect(error).toBeInstanceOf(UnprocessableEntityException);
+    expect((error as Error).message).toBe(INVALID_FACTS_FORMAT_MESSAGE);
+    expect(provider.requests).toHaveLength(2);
   });
 });
 

@@ -6,14 +6,15 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import type {
-  ArticleFormat,
-  AutopilotEvent,
-  AutopilotExtractInput,
-  AutopilotExtractResponse,
-  VersionCheck,
+import {
+  extractedFactsSchema,
+  type ArticleFormat,
+  type AutopilotEvent,
+  type AutopilotExtractInput,
+  type AutopilotExtractResponse,
+  type ExtractedFact,
+  type VersionCheck,
 } from '@dzenwriter/shared';
-import { z } from 'zod';
 import { EDITABLE_CONTENT_STATUSES, type Actor } from '../articles/article-rules';
 import type { ArticleView } from '../articles/articles.repository';
 import { ARTICLES_REPOSITORY, type ArticlesRepository } from '../articles/articles.repository';
@@ -38,6 +39,10 @@ import { renderTemplate, sha256 } from '../generation/prompt-builder';
 const MAX_ITERATIONS = 3;
 const MAX_WARNINGS = 5;
 const MAX_FACTS = 20;
+// Один повторный запрос, как в генерации: модель может исправить формат ответа.
+const MAX_EXTRACT_ATTEMPTS = 2;
+export const INVALID_FACTS_FORMAT_MESSAGE =
+  'Модель вернула неверный формат фактов. Попробуйте еще раз';
 const FACT_EXTRACTION_JSON_SCHEMA: Record<string, unknown> = {
   type: 'object',
   additionalProperties: false,
@@ -60,21 +65,6 @@ const FACT_EXTRACTION_JSON_SCHEMA: Record<string, unknown> = {
   },
 };
 
-const extractedFactsSchema = z.object({
-  facts: z
-    .array(
-      z.object({
-        text: z.string().trim().min(1),
-        type: z.enum(['news_source', 'company_fact']),
-        source_url: z.string().nullish(),
-        source_published_at: z.string().nullish(),
-      }),
-    )
-    .min(1),
-});
-
-type ExtractedFact = z.infer<typeof extractedFactsSchema>['facts'][number];
-
 export type AutopilotEmitter = (event: AutopilotEvent) => void | Promise<void>;
 
 @Injectable()
@@ -94,18 +84,38 @@ export class AutopilotService {
 
   // Извлекает факты из сырого задания, создаёт материал и черновики фактов.
   // Метки F1…Fn назначает репозиторий при привязке.
-  async extractFacts(actor: Actor, input: AutopilotExtractInput): Promise<AutopilotExtractResponse> {
+  async extractFacts(
+    actor: Actor,
+    input: AutopilotExtractInput,
+  ): Promise<AutopilotExtractResponse> {
     await this.limits.checkLimits(actor.id);
     const startedAt = Date.now();
     const prompt = renderTemplate(this.factExtractorPrompt, { raw_task: input.rawTask });
     const promptVersion = `autopilot-extract:sha256:${sha256(prompt).slice(0, 16)}`;
-    const response = await this.llm.generate({
-      messages: [{ role: 'user', content: prompt }],
-      jsonSchema: FACT_EXTRACTION_JSON_SCHEMA,
-      temperature: 0.1,
-      signal: undefined,
-    });
-    const facts = parseExtractedFacts(response.content);
+
+    // Разбор ответа с одним повтором: markdown-обёртка и текст вокруг JSON не должны
+    // превращаться в 500. Если формат не сошёлся и со второго раза — 422.
+    let usage: LlmUsage = { inputTokens: 0, outputTokens: 0 };
+    let facts: ExtractedFact[] | undefined;
+    for (let attempt = 1; attempt <= MAX_EXTRACT_ATTEMPTS && facts === undefined; attempt += 1) {
+      const response = await this.llm.generate({
+        messages: [{ role: 'user', content: prompt }],
+        jsonSchema: FACT_EXTRACTION_JSON_SCHEMA,
+        temperature: 0.1,
+        signal: undefined,
+      });
+      usage = {
+        inputTokens: usage.inputTokens + response.usage.inputTokens,
+        outputTokens: usage.outputTokens + response.usage.outputTokens,
+      };
+      const parsed = parseExtractedFacts(response.content);
+      if (parsed.ok) {
+        facts = parsed.facts;
+      }
+    }
+    if (facts === undefined) {
+      throw new UnprocessableEntityException(INVALID_FACTS_FORMAT_MESSAGE);
+    }
 
     const hasNews = facts.some((fact) => fact.type === 'news_source');
     const style = this.pickStyle(hasNews);
@@ -164,10 +174,10 @@ export class AutopilotService {
       runId,
       {
         status: 'succeeded',
-        inputTokens: response.usage.inputTokens,
-        outputTokens: response.usage.outputTokens,
+        inputTokens: usage.inputTokens,
+        outputTokens: usage.outputTokens,
         latencyMs: Date.now() - startedAt,
-        costUsd: this.limits.costOf(response.usage),
+        costUsd: this.limits.costOf(usage),
         errorCode: null,
         questions: [],
         finishedAt: new Date(),
@@ -190,11 +200,7 @@ export class AutopilotService {
     }
   }
 
-  async runAutopilot(
-    actor: Actor,
-    articleId: string,
-    emit: AutopilotEmitter,
-  ): Promise<void> {
+  async runAutopilot(actor: Actor, articleId: string, emit: AutopilotEmitter): Promise<void> {
     await this.prepare(actor, articleId);
 
     try {
@@ -443,18 +449,47 @@ function checksReport(checks: readonly VersionCheck[]): string {
   return relevant.map((check) => `- [${check.severity}] ${check.message}`).join('\n');
 }
 
-function parseExtractedFacts(content: string): ExtractedFact[] {
+// Достаём JSON из ответа модели: снимаем markdown-обёртку и отбрасываем текст
+// до первого «{» и после последнего «}». Модель иногда добавляет пояснения.
+export function extractJson(rawText: string): string {
+  const withoutFences = rawText
+    .replace(/```[a-zA-Z0-9_-]*\s*/g, '')
+    .replace(/```/g, '')
+    .trim();
+  const start = withoutFences.indexOf('{');
+  const end = withoutFences.lastIndexOf('}');
+  if (start === -1 || end === -1 || end < start) {
+    return withoutFences;
+  }
+  return withoutFences.slice(start, end + 1).trim();
+}
+
+// Разбор ответа модели: очищенный JSON и проверка Zod-схемой из packages/shared.
+export function parseExtractedFacts(
+  content: string,
+):
+  | { readonly ok: true; readonly facts: ExtractedFact[] }
+  | { readonly ok: false; readonly error: string } {
   let raw: unknown;
   try {
-    raw = JSON.parse(stripCodeFence(content));
-  } catch {
-    throw new LlmProviderError('invalid_response', 'Провайдер вернул не JSON с фактами');
+    raw = JSON.parse(extractJson(content));
+  } catch (error) {
+    const reason = error instanceof Error ? error.message : String(error);
+    return { ok: false, error: `ответ не разобрался как JSON: ${reason}` };
   }
   const result = extractedFactsSchema.safeParse(raw);
   if (!result.success) {
-    throw new LlmProviderError('invalid_response', 'Провайдер вернул факты не по схеме');
+    return {
+      ok: false,
+      error: result.error.issues
+        .map((issue) => `${issue.path.map(String).join('.') || '(корень)'}: ${issue.message}`)
+        .join('; '),
+    };
   }
-  return result.data.facts;
+  if (result.data.facts.length === 0) {
+    return { ok: false, error: 'модель не извлекла ни одного факта' };
+  }
+  return { ok: true, facts: result.data.facts };
 }
 
 function stripCodeFence(value: string): string {

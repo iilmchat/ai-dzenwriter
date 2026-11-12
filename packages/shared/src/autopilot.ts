@@ -16,6 +16,20 @@ export const autopilotExtractResponseSchema = z.object({
 });
 export type AutopilotExtractResponse = z.infer<typeof autopilotExtractResponseSchema>;
 
+// Ответ модели при извлечении фактов. Поля snake_case повторяют промпт.
+export const extractedFactsSchema = z.object({
+  facts: z.array(
+    z.object({
+      text: z.string().trim().min(1),
+      type: z.enum(['news_source', 'company_fact']),
+      source_url: z.string().url().nullable().optional(),
+      source_published_at: z.string().nullable().optional(),
+    }),
+  ),
+});
+export type ExtractedFacts = z.infer<typeof extractedFactsSchema>;
+export type ExtractedFact = ExtractedFacts['facts'][number];
+
 export const AUTOPILOT_STAGES = ['brief', 'generate', 'checks', 'refine', 'done'] as const;
 export type AutopilotStage = (typeof AUTOPILOT_STAGES)[number];
 
